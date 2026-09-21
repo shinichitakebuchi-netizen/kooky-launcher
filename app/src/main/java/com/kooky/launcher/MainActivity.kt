@@ -1,7 +1,9 @@
 package com.kooky.launcher
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.ResolveInfo
 import android.graphics.Color
 import android.graphics.drawable.Drawable
@@ -20,9 +22,13 @@ class MainActivity : Activity() {
     data class AppEntry(val label: String, val packageName: String, val icon: Drawable)
 
     private val apps = mutableListOf<AppEntry>()
+    private lateinit var prefs: SharedPreferences
+    private val appAdapter = AppAdapter()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // タップ回数を保存する場所
+        prefs = getSharedPreferences("usage", Context.MODE_PRIVATE)
 
         loadApps()
 
@@ -33,12 +39,19 @@ class MainActivity : Activity() {
             clipToPadding = false
             verticalSpacing = dp(16)
             setBackgroundColor(Color.parseColor("#101014"))
-            adapter = AppAdapter()
+            adapter = appAdapter
             setOnItemClickListener { _, _, position, _ ->
                 launchApp(apps[position].packageName)
             }
         }
         setContentView(grid)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // アプリから戻ってきたとき、最新の回数で並べ直す
+        sortApps()
+        appAdapter.notifyDataSetChanged()
     }
 
     private fun loadApps() {
@@ -59,10 +72,21 @@ class MainActivity : Activity() {
                 )
             )
         }
-        apps.sortBy { it.label.lowercase() }
+        sortApps()
+    }
+
+    private fun sortApps() {
+        // 使用回数が多い順 → 同数なら名前順
+        apps.sortWith(
+            compareByDescending<AppEntry> { prefs.getInt(it.packageName, 0) }
+                .thenBy { it.label.lowercase() }
+        )
     }
 
     private fun launchApp(pkg: String) {
+        // タップされた回数を1増やして記録
+        val count = prefs.getInt(pkg, 0) + 1
+        prefs.edit().putInt(pkg, count).apply()
         packageManager.getLaunchIntentForPackage(pkg)?.let { startActivity(it) }
     }
 
