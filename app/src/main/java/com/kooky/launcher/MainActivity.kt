@@ -87,15 +87,15 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
 
-        // 右下の丸い検索ボタン
+        // 右下の丸い検索ボタン（サイズ半分・オレンジ）
         searchButton = ImageView(this).apply {
             setImageResource(android.R.drawable.ic_menu_search)
             setColorFilter(Color.WHITE)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#3A3AFF"))
+                setColor(Color.parseColor("#FF8C00"))
             }
-            val p = dp(14)
+            val p = dp(7)
             setPadding(p, p, p, p)
             setOnClickListener { toggleSearch() }
         }
@@ -103,7 +103,7 @@ class MainActivity : Activity() {
         val root = FrameLayout(this).apply {
             addView(content, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            addView(searchButton, FrameLayout.LayoutParams(dp(56), dp(56)).apply {
+            addView(searchButton, FrameLayout.LayoutParams(dp(28), dp(28)).apply {
                 gravity = Gravity.BOTTOM or Gravity.END
                 val m = dp(24)
                 setMargins(m, m, m, m)
