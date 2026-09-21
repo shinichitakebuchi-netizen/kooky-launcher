@@ -12,8 +12,10 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
 import android.widget.BaseAdapter
 import android.widget.EditText
 import android.widget.GridView
@@ -51,11 +53,25 @@ class MainActivity : Activity() {
             background = null
             val p = dp(10)
             setPadding(p, p, p, p)
+            // 起動時に勝手にフォーカスを取らないようにする（タップされるまで入力不可）
+            isFocusable = false
+            isFocusableInTouchMode = false
             addTextChangedListener(object : TextWatcher {
                 override fun afterTextChanged(s: Editable?) { applyFilter() }
                 override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
                 override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             })
+            // タップされた瞬間に初めて入力可能にしてフォーカスを与える
+            setOnTouchListener { _, event ->
+                if (event.action == MotionEvent.ACTION_UP) {
+                    isFocusableInTouchMode = true
+                    isFocusable = true
+                    requestFocus()
+                    val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                    imm.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+                }
+                false
+            }
             setOnEditorActionListener { _, _, _ ->
                 if (shown.isNotEmpty()) launchApp(shown[0].packageName)
                 true
@@ -108,6 +124,9 @@ class MainActivity : Activity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#101014"))
+            // 起動時のフォーカスをここで受け止め、検索バーに行かせない
+            isFocusable = true
+            isFocusableInTouchMode = true
             val m = dp(12)
             addView(topGap)
             addView(searchBarRow, LinearLayout.LayoutParams(
@@ -127,11 +146,22 @@ class MainActivity : Activity() {
         super.onResume()
         sortApps()
         applyFilter()
+        resetSearch()
+    }
+
+    // 検索状態・フォーカス・キーボードを初期状態に戻す
+    private fun resetSearch() {
+        searchBar.setText("")
+        searchBar.clearFocus()
+        searchBar.isFocusable = false
+        searchBar.isFocusableInTouchMode = false
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(searchBar.windowToken, 0)
     }
 
     override fun onBackPressed() {
         if (!searchBar.text.isNullOrEmpty()) {
-            searchBar.setText("") // 検索中なら戻るでクリア
+            resetSearch() // 検索中なら戻るでクリア
         } else {
             super.onBackPressed()
         }
@@ -180,7 +210,7 @@ class MainActivity : Activity() {
     private fun launchApp(pkg: String) {
         val count = prefs.getInt(pkg, 0) + 1
         prefs.edit().putInt(pkg, count).apply()
-        searchBar.setText("") // 起動したら検索をリセット
+        resetSearch() // 起動したら検索をリセット
         packageManager.getLaunchIntentForPackage(pkg)?.let { startActivity(it) }
     }
 
