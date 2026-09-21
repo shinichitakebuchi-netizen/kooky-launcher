@@ -36,6 +36,11 @@ class MainActivity : Activity() {
     private lateinit var searchButton: ImageView
     private var searching = false
 
+    // 片手操作用：上から何行ぶんを空けるか（ここを変えれば調整できる）
+    private val gridColumns = 4
+    private val topSpacerRows = 3
+    private val topSpacerCells get() = gridColumns * topSpacerRows
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences("usage", Context.MODE_PRIVATE)
@@ -65,14 +70,16 @@ class MainActivity : Activity() {
 
         // アプリ一覧グリッド
         val grid = GridView(this).apply {
-            numColumns = 4
+            numColumns = gridColumns
             val pad = dp(12)
             setPadding(pad, dp(40), pad, dp(96)) // 下は検索ボタンに隠れないよう広め
             clipToPadding = false
             verticalSpacing = dp(16)
             adapter = appAdapter
             setOnItemClickListener { _, _, position, _ ->
-                launchApp(shown[position].packageName)
+                if (position < topSpacerCells) return@setOnItemClickListener // 空マスは無視
+                val app = shown[position - topSpacerCells]
+                launchApp(app.packageName)
                 if (searching) exitSearch()
             }
         }
@@ -202,29 +209,34 @@ class MainActivity : Activity() {
         (value * resources.displayMetrics.density).toInt()
 
     inner class AppAdapter : BaseAdapter() {
-        override fun getCount(): Int = shown.size
-        override fun getItem(position: Int): Any = shown[position]
+        // 空マス（上部スペーサー）＋実際のアプリ数
+        override fun getCount(): Int = topSpacerCells + shown.size
+        override fun getItem(position: Int): Any = position
         override fun getItemId(position: Int): Long = position.toLong()
 
         override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
-            val app = shown[position]
+            val isSpacer = position < topSpacerCells
             val cell = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 setPadding(dp(4), dp(8), dp(4), dp(8))
             }
             val icon = ImageView(this@MainActivity).apply {
-                setImageDrawable(app.icon)
                 layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
             }
             val label = TextView(this@MainActivity).apply {
-                text = app.label
                 setTextColor(Color.WHITE)
                 textSize = 12f
                 gravity = Gravity.CENTER
                 maxLines = 1
                 setPadding(0, dp(4), 0, 0)
             }
+            if (!isSpacer) {
+                val app = shown[position - topSpacerCells]
+                icon.setImageDrawable(app.icon)
+                label.text = app.label
+            }
+            // 空マスのときは icon も label も空のまま（高さだけ確保して上部を押し下げる）
             cell.addView(icon)
             cell.addView(label)
             return cell
