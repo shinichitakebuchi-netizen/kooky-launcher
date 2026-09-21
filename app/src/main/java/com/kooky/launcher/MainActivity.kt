@@ -34,7 +34,6 @@ class MainActivity : Activity() {
 
     private lateinit var searchBar: EditText
     private lateinit var searchButton: ImageView
-    private var searching = false
 
     // 片手操作用：上から何行ぶんを空けるか（ここを変えれば調整できる）
     private val gridColumns = 4
@@ -47,23 +46,26 @@ class MainActivity : Activity() {
 
         loadApps()
 
-        // 検索バー（最初は非表示）
+        // 上部の常時表示・検索バー
         searchBar = EditText(this).apply {
             hint = "アプリ検索"
             setSingleLine(true)
             setTextColor(Color.WHITE)
             setHintTextColor(Color.parseColor("#888888"))
-            setBackgroundColor(Color.parseColor("#1C1C22"))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(12).toFloat()
+                setColor(Color.parseColor("#1C1C22"))
+            }
             val p = dp(12)
             setPadding(p, p, p, p)
-            visibility = View.GONE
             addTextChangedListener(object : TextWatcher {
-                override fun afterTextChanged(s: Editable?) { filter(s?.toString() ?: "") }
+                override fun afterTextChanged(s: Editable?) { applyFilter() }
                 override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
                 override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             })
             setOnEditorActionListener { _, _, _ ->
-                if (shown.isNotEmpty()) { launchApp(shown[0].packageName); exitSearch() }
+                if (shown.isNotEmpty()) launchApp(shown[0].packageName)
                 true
             }
         }
@@ -72,7 +74,7 @@ class MainActivity : Activity() {
         val grid = GridView(this).apply {
             numColumns = gridColumns
             val pad = dp(12)
-            setPadding(pad, dp(40), pad, dp(96)) // 下は検索ボタンに隠れないよう広め
+            setPadding(pad, dp(12), pad, dp(96)) // 下は検索ボタンに隠れないよう広め
             clipToPadding = false
             verticalSpacing = dp(16)
             adapter = appAdapter
@@ -80,7 +82,6 @@ class MainActivity : Activity() {
                 if (position < topSpacerCells) return@setOnItemClickListener // 空マスは無視
                 val app = shown[position - topSpacerCells]
                 launchApp(app.packageName)
-                if (searching) exitSearch()
             }
         }
 
@@ -88,13 +89,16 @@ class MainActivity : Activity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#101014"))
+            val m = dp(12)
             addView(searchBar, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(m, m, m, dp(4))
+            })
             addView(grid, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
 
-        // 右下の丸い検索ボタン（サイズ半分・オレンジ）
+        // 右下の丸い検索ボタン（元サイズ・オレンジ）
         searchButton = ImageView(this).apply {
             setImageResource(android.R.drawable.ic_menu_search)
             setColorFilter(Color.WHITE)
@@ -102,33 +106,41 @@ class MainActivity : Activity() {
                 shape = GradientDrawable.OVAL
                 setColor(Color.parseColor("#FF8C00"))
             }
-            val p = dp(7)
+            val p = dp(14)
             setPadding(p, p, p, p)
-            setOnClickListener { toggleSearch() }
+            setOnClickListener {
+                searchBar.requestFocus()
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+                imm.showSoftInput(searchBar, InputMethodManager.SHOW_IMPLICIT)
+            }
         }
 
         val root = FrameLayout(this).apply {
             addView(content, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            addView(searchButton, FrameLayout.LayoutParams(dp(28), dp(28)).apply {
+            addView(searchButton, FrameLayout.LayoutParams(dp(56), dp(56)).apply {
                 gravity = Gravity.BOTTOM or Gravity.END
                 val m = dp(24)
                 setMargins(m, m, m, m)
             })
         }
         setContentView(root)
+
+        applyFilter() // 初期表示（全アプリ）
     }
 
     override fun onResume() {
         super.onResume()
-        if (!searching) {
-            sortApps()
-            appAdapter.notifyDataSetChanged()
-        }
+        sortApps()
+        applyFilter()
     }
 
     override fun onBackPressed() {
-        if (searching) exitSearch() else super.onBackPressed()
+        if (!searchBar.text.isNullOrEmpty()) {
+            searchBar.setText("") // 検索中なら戻るでクリア
+        } else {
+            super.onBackPressed()
+        }
     }
 
     private fun loadApps() {
@@ -158,14 +170,10 @@ class MainActivity : Activity() {
             compareByDescending<AppEntry> { prefs.getInt(it.packageName, 0) }
                 .thenBy { it.label.lowercase() }
         )
-        if (!searching) {
-            shown.clear()
-            shown.addAll(apps)
-        }
     }
 
-    private fun filter(query: String) {
-        val q = query.trim()
+    private fun applyFilter() {
+        val q = searchBar.text?.toString()?.trim() ?: ""
         shown.clear()
         if (q.isEmpty()) {
             shown.addAll(apps)
@@ -175,33 +183,10 @@ class MainActivity : Activity() {
         appAdapter.notifyDataSetChanged()
     }
 
-    private fun toggleSearch() {
-        if (searching) exitSearch() else enterSearch()
-    }
-
-    private fun enterSearch() {
-        searching = true
-        searchBar.visibility = View.VISIBLE
-        searchBar.setText("")
-        filter("")
-        searchBar.requestFocus()
-        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        imm.showSoftInput(searchBar, InputMethodManager.SHOW_IMPLICIT)
-    }
-
-    private fun exitSearch() {
-        searching = false
-        searchBar.setText("")
-        searchBar.visibility = View.GONE
-        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        imm.hideSoftInputFromWindow(searchBar.windowToken, 0)
-        sortApps()
-        appAdapter.notifyDataSetChanged()
-    }
-
     private fun launchApp(pkg: String) {
         val count = prefs.getInt(pkg, 0) + 1
         prefs.edit().putInt(pkg, count).apply()
+        searchBar.setText("") // 起動したら検索をリセット
         packageManager.getLaunchIntentForPackage(pkg)?.let { startActivity(it) }
     }
 
@@ -236,7 +221,6 @@ class MainActivity : Activity() {
                 icon.setImageDrawable(app.icon)
                 label.text = app.label
             }
-            // 空マスのときは icon も label も空のまま（高さだけ確保して上部を押し下げる）
             cell.addView(icon)
             cell.addView(label)
             return cell
