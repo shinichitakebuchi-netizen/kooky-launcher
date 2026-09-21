@@ -95,3 +95,139 @@ class MainActivity : Activity() {
                 shape = GradientDrawable.OVAL
                 setColor(Color.parseColor("#3A3AFF"))
             }
+            val p = dp(14)
+            setPadding(p, p, p, p)
+            setOnClickListener { toggleSearch() }
+        }
+
+        val root = FrameLayout(this).apply {
+            addView(content, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(searchButton, FrameLayout.LayoutParams(dp(56), dp(56)).apply {
+                gravity = Gravity.BOTTOM or Gravity.END
+                val m = dp(24)
+                setMargins(m, m, m, m)
+            })
+        }
+        setContentView(root)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!searching) {
+            sortApps()
+            appAdapter.notifyDataSetChanged()
+        }
+    }
+
+    override fun onBackPressed() {
+        if (searching) exitSearch() else super.onBackPressed()
+    }
+
+    private fun loadApps() {
+        val pm = packageManager
+        val intent = Intent(Intent.ACTION_MAIN, null).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
+        val list: List<ResolveInfo> = pm.queryIntentActivities(intent, 0)
+        apps.clear()
+        for (ri in list) {
+            val pkg = ri.activityInfo.packageName
+            if (pkg == packageName) continue // 自分自身は隠す
+            apps.add(
+                AppEntry(
+                    label = ri.loadLabel(pm).toString(),
+                    packageName = pkg,
+                    icon = ri.loadIcon(pm)
+                )
+            )
+        }
+        sortApps()
+    }
+
+    private fun sortApps() {
+        // 使用回数が多い順 → 同数なら名前順
+        apps.sortWith(
+            compareByDescending<AppEntry> { prefs.getInt(it.packageName, 0) }
+                .thenBy { it.label.lowercase() }
+        )
+        if (!searching) {
+            shown.clear()
+            shown.addAll(apps)
+        }
+    }
+
+    private fun filter(query: String) {
+        val q = query.trim()
+        shown.clear()
+        if (q.isEmpty()) {
+            shown.addAll(apps)
+        } else {
+            shown.addAll(apps.filter { it.label.contains(q, ignoreCase = true) })
+        }
+        appAdapter.notifyDataSetChanged()
+    }
+
+    private fun toggleSearch() {
+        if (searching) exitSearch() else enterSearch()
+    }
+
+    private fun enterSearch() {
+        searching = true
+        searchBar.visibility = View.VISIBLE
+        searchBar.setText("")
+        filter("")
+        searchBar.requestFocus()
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.showSoftInput(searchBar, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    private fun exitSearch() {
+        searching = false
+        searchBar.setText("")
+        searchBar.visibility = View.GONE
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(searchBar.windowToken, 0)
+        sortApps()
+        appAdapter.notifyDataSetChanged()
+    }
+
+    private fun launchApp(pkg: String) {
+        val count = prefs.getInt(pkg, 0) + 1
+        prefs.edit().putInt(pkg, count).apply()
+        packageManager.getLaunchIntentForPackage(pkg)?.let { startActivity(it) }
+    }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
+
+    inner class AppAdapter : BaseAdapter() {
+        override fun getCount(): Int = shown.size
+        override fun getItem(position: Int): Any = shown[position]
+        override fun getItemId(position: Int): Long = position.toLong()
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+            val app = shown[position]
+            val cell = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(4), dp(8), dp(4), dp(8))
+            }
+            val icon = ImageView(this@MainActivity).apply {
+                setImageDrawable(app.icon)
+                layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
+            }
+            val label = TextView(this@MainActivity).apply {
+                text = app.label
+                setTextColor(Color.WHITE)
+                textSize = 12f
+                gravity = Gravity.CENTER
+                maxLines = 1
+                setPadding(0, dp(4), 0, 0)
+            }
+            cell.addView(icon)
+            cell.addView(label)
+            return cell
+        }
+    }
+}
