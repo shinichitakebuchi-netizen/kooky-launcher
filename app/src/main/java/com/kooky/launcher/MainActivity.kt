@@ -33,8 +33,10 @@ class MainActivity : Activity() {
     private lateinit var searchBar: EditText
 
     private val gridColumns = 4
-    // 片手操作用：バーの上に空ける余白の高さ（この数字を変えれば調整できる。0にすればバーが最上部）
+    // 片手操作用：バーの上に空ける余白の高さ（0にすればバーが最上部）
     private val topGapDp = 200
+    // アプリを検索バーの下からさらに下げる余白（約1行ぶん≒90。増減で微調整）
+    private val appsTopPadDp = 90
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -93,7 +95,7 @@ class MainActivity : Activity() {
         val grid = GridView(this).apply {
             numColumns = gridColumns
             val pad = dp(12)
-            setPadding(pad, dp(4), pad, dp(24))
+            setPadding(pad, dp(appsTopPadDp), pad, dp(24)) // 上を1行ぶん空けてアプリを下げる
             clipToPadding = false
             verticalSpacing = dp(16)
             adapter = appAdapter
