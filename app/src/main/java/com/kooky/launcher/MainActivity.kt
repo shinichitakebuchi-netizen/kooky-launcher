@@ -28,6 +28,7 @@ import android.widget.GridView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -46,11 +47,9 @@ class MainActivity : Activity() {
     private lateinit var dateText: TextView
 
     private val gridColumns = 4
-    // 検索バー・時計ごと下げる余白の高さ（増減で位置調整）
     private val topGapDp = 290
     private val appsTopPadDp = 4
 
-    // 時計・日付の更新
     private val timeHandler = Handler(Looper.getMainLooper())
     private val clockFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("yyyy.MM.dd-EEE", Locale.JAPANESE)
@@ -69,7 +68,6 @@ class MainActivity : Activity() {
 
         loadApps()
 
-        // 時計（秒まで・タップで時計アプリ）
         clockText = TextView(this).apply {
             textSize = 46f
             setTextColor(Color.WHITE)
@@ -77,7 +75,6 @@ class MainActivity : Activity() {
             setTypeface(typeface, Typeface.BOLD)
             setOnClickListener { openClock() }
         }
-        // 日付（2026.09.22-火・タップでカレンダー）
         dateText = TextView(this).apply {
             textSize = 16f
             setTextColor(Color.parseColor("#CCCCCC"))
@@ -85,7 +82,6 @@ class MainActivity : Activity() {
             setPadding(0, dp(4), 0, 0)
             setOnClickListener { openCalendar() }
         }
-        // 上の空きスペースに時計＋日付を入れる（高さは従来の余白ぶん確保）
         val topArea = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -95,14 +91,12 @@ class MainActivity : Activity() {
             addView(dateText)
         }
 
-        // オレンジの検索バー本体（ヒント文字なし・入力欄）
         searchBar = EditText(this).apply {
             setSingleLine(true)
             setTextColor(Color.parseColor("#101014"))
             background = null
             val p = dp(10)
             setPadding(p, p, p, p)
-            // 起動時に勝手にフォーカスを取らない（タップされるまで入力不可）
             isFocusable = false
             isFocusableInTouchMode = false
             addTextChangedListener(object : TextWatcher {
@@ -126,7 +120,6 @@ class MainActivity : Activity() {
             }
         }
 
-        // 右端に置く検索アイコン
         val searchIcon = ImageView(this).apply {
             setImageResource(android.R.drawable.ic_menu_search)
             setColorFilter(Color.parseColor("#101014"))
@@ -134,7 +127,6 @@ class MainActivity : Activity() {
             setPadding(p, p, p, p)
         }
 
-        // 入力欄＋アイコンを横並びにして、オレンジ丸角の背景をつける
         val searchBarRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -149,7 +141,6 @@ class MainActivity : Activity() {
             addView(searchIcon, LinearLayout.LayoutParams(dp(40), dp(40)))
         }
 
-        // アプリ一覧グリッド
         val grid = GridView(this).apply {
             numColumns = gridColumns
             val pad = dp(12)
@@ -162,7 +153,6 @@ class MainActivity : Activity() {
             }
         }
 
-        // 縦に並べる：時計エリア → 検索バー → アプリ
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#101014"))
@@ -180,7 +170,7 @@ class MainActivity : Activity() {
 
         setContentView(content)
 
-        applyFilter() // 初期表示（全アプリ）
+        applyFilter()
     }
 
     override fun onResume() {
@@ -189,19 +179,43 @@ class MainActivity : Activity() {
         applyFilter()
         resetSearch()
         timeHandler.removeCallbacks(tick)
-        timeHandler.post(tick) // 時計スタート
+        timeHandler.post(tick)
     }
 
     override fun onPause() {
         super.onPause()
-        timeHandler.removeCallbacks(tick) // 非表示中は時計停止
+        timeHandler.removeCallbacks(tick)
     }
 
+    // 時計アプリを開く（3段構え：直接起動→時計画面指定→アラーム画面）
     private fun openClock() {
+        // ① 端末の「時計」アプリを直接起動できるなら起動
+        val clockPackages = listOf(
+            "com.google.android.deskclock",   // Google/Pixel系
+            "com.sec.android.app.clockpackage" // Samsung Galaxy系
+        )
+        for (pkg in clockPackages) {
+            val intent = packageManager.getLaunchIntentForPackage(pkg)
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+                return
+            }
+        }
+        // ② それ以外の端末：時計カテゴリのアプリを探して起動
+        try {
+            startActivity(Intent(Intent.ACTION_MAIN)
+                .addCategory("android.intent.category.APP_DESKCLOCK")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return
+        } catch (e: Exception) {}
+        // ③ 最後の手段：アラーム画面
         try {
             startActivity(Intent(AlarmClock.ACTION_SHOW_ALARMS)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return
         } catch (e: Exception) {}
+        Toast.makeText(this, "時計アプリが見つかりませんでした", Toast.LENGTH_SHORT).show()
     }
 
     private fun openCalendar() {
@@ -210,10 +224,11 @@ class MainActivity : Activity() {
             ContentUris.appendId(builder, System.currentTimeMillis())
             startActivity(Intent(Intent.ACTION_VIEW, builder.build())
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            Toast.makeText(this, "カレンダーを開けませんでした", Toast.LENGTH_SHORT).show()
+        }
     }
 
-    // 検索状態・フォーカス・キーボードを初期状態に戻す
     private fun resetSearch() {
         searchBar.setText("")
         searchBar.clearFocus()
@@ -240,7 +255,7 @@ class MainActivity : Activity() {
         apps.clear()
         for (ri in list) {
             val pkg = ri.activityInfo.packageName
-            if (pkg == packageName) continue // 自分自身は隠す
+            if (pkg == packageName) continue
             apps.add(
                 AppEntry(
                     label = ri.loadLabel(pm).toString(),
