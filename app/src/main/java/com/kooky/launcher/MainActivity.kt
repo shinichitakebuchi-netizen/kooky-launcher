@@ -55,6 +55,17 @@ class MainActivity : Activity() {
     private val topGapDp = 290
     private val appsTopPadDp = 4
 
+    // アプリ名を表示するかどうか（長押しで切替・保存される）
+    private var showLabels = true
+
+    // 読みがな→アプリ英名 の変換ペア（必要に応じてここに足す）
+    // キーはひらがなで書く。カタカナは自動でひらがな化して照合するので、ひらがなだけでOK
+    private val readingMap = mapOf(
+        "あはも" to "ahamo",
+        "ぺいぺい" to "paypay",
+        "らいん" to "line"
+    )
+
     private val timeHandler = Handler(Looper.getMainLooper())
     private val clockFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("yyyy.MM.dd-EEE", Locale.JAPANESE)
@@ -70,6 +81,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences("usage", Context.MODE_PRIVATE)
+        showLabels = prefs.getBoolean("show_labels", true)
 
         loadApps()
 
@@ -135,6 +147,8 @@ class MainActivity : Activity() {
             setColorFilter(Color.parseColor("#101014"))
             val p = dp(8)
             setPadding(p, p, p, p)
+            // 長押しでアプリ名の表示/非表示を切り替え
+            setOnLongClickListener { toggleLabels(); true }
         }
 
         val searchBarRow = LinearLayout(this).apply {
@@ -197,6 +211,15 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         timeHandler.removeCallbacks(tick)
+    }
+
+    // アプリ名の表示/非表示を切り替えて保存
+    private fun toggleLabels() {
+        showLabels = !showLabels
+        prefs.edit().putBoolean("show_labels", showLabels).apply()
+        appAdapter.notifyDataSetChanged()
+        Toast.makeText(this, if (showLabels) "アプリ名: 表示" else "アプリ名: 非表示",
+            Toast.LENGTH_SHORT).show()
     }
 
     private fun maybeAskNotificationAccess() {
@@ -318,13 +341,32 @@ class MainActivity : Activity() {
         )
     }
 
+    // カタカナをひらがなに変換（照合をゆるくするため）
+    private fun toHiragana(s: String): String {
+        val sb = StringBuilder()
+        for (c in s) {
+            // カタカナ(ァ-ン)をひらがなにずらす
+            if (c in '\u30A1'..'\u30F6') sb.append(c - 0x60) else sb.append(c)
+        }
+        return sb.toString()
+    }
+
     private fun applyFilter() {
-        val q = searchBar.text?.toString()?.trim() ?: ""
+        val raw = searchBar.text?.toString()?.trim() ?: ""
         shown.clear()
-        if (q.isEmpty()) {
+        if (raw.isEmpty()) {
             shown.addAll(apps)
         } else {
-            shown.addAll(apps.filter { it.label.contains(q, ignoreCase = true) })
+            val q = toHiragana(raw.lowercase())
+            // 読みがなペアに一致すれば、英名にも読み替えて一緒に検索
+            val extra = readingMap.entries
+                .filter { it.key.contains(q) || q.contains(it.key) }
+                .map { it.value }
+            shown.addAll(apps.filter { app ->
+                val name = app.label.lowercase()
+                val nameHira = toHiragana(name)
+                nameHira.contains(q) || extra.any { name.contains(it) }
+            })
         }
         appAdapter.notifyDataSetChanged()
     }
@@ -358,32 +400,4 @@ class MainActivity : Activity() {
     inner class AppAdapter : BaseAdapter() {
         override fun getCount(): Int = shown.size
         override fun getItem(position: Int): Any = shown[position]
-        override fun getItemId(position: Int): Long = position.toLong()
-
-        override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
-            val app = shown[position]
-            val cell = LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(dp(4), dp(8), dp(4), dp(8))
-            }
-            val hasNotif = NotificationService.activePackages.contains(app.packageName)
-            val iconDrawable = if (hasNotif) withBadge(app.icon) else app.icon
-            val icon = ImageView(this@MainActivity).apply {
-                setImageDrawable(iconDrawable)
-                layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
-            }
-            val label = TextView(this@MainActivity).apply {
-                text = app.label
-                setTextColor(Color.WHITE)
-                textSize = 12f
-                gravity = Gravity.CENTER
-                maxLines = 1
-                setPadding(0, dp(4), 0, 0)
-            }
-            cell.addView(icon)
-            cell.addView(label)
-            return cell
-        }
-    }
-}
+        override
