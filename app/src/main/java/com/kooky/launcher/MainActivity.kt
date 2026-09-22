@@ -74,6 +74,8 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setOnClickListener { openClock() }
+            // 診断用：長押しで時計アプリ候補のパッケージ名を表示
+            setOnLongClickListener { showClockDiagnostics(); true }
         }
         dateText = TextView(this).apply {
             textSize = 16f
@@ -189,10 +191,9 @@ class MainActivity : Activity() {
 
     // 時計アプリを開く（3段構え：直接起動→時計画面指定→アラーム画面）
     private fun openClock() {
-        // ① 端末の「時計」アプリを直接起動できるなら起動
         val clockPackages = listOf(
-            "com.google.android.deskclock",   // Google/Pixel系
-            "com.sec.android.app.clockpackage" // Samsung Galaxy系
+            "com.google.android.deskclock",
+            "com.sec.android.app.clockpackage"
         )
         for (pkg in clockPackages) {
             val intent = packageManager.getLaunchIntentForPackage(pkg)
@@ -202,20 +203,41 @@ class MainActivity : Activity() {
                 return
             }
         }
-        // ② それ以外の端末：時計カテゴリのアプリを探して起動
         try {
             startActivity(Intent(Intent.ACTION_MAIN)
                 .addCategory("android.intent.category.APP_DESKCLOCK")
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return
         } catch (e: Exception) {}
-        // ③ 最後の手段：アラーム画面
         try {
             startActivity(Intent(AlarmClock.ACTION_SHOW_ALARMS)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return
         } catch (e: Exception) {}
         Toast.makeText(this, "時計アプリが見つかりませんでした", Toast.LENGTH_SHORT).show()
+    }
+
+    // 診断用：インストール済みアプリから「clock/時計」らしきパッケージ名を探して表示
+    private fun showClockDiagnostics() {
+        val pm = packageManager
+        val intent = Intent(Intent.ACTION_MAIN, null).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
+        val all = pm.queryIntentActivities(intent, 0)
+        val hits = all.map { it.activityInfo.packageName }
+            .filter {
+                it.contains("clock", true) ||
+                it.contains("deskclock", true) ||
+                it.contains("alarm", true)
+            }
+            .distinct()
+        val msg = if (hits.isEmpty()) {
+            "時計候補が見つかりません。一覧の時計アプリ名を教えてください"
+        } else {
+            "時計候補: " + hits.joinToString(" / ")
+        }
+        // 長いので画面に長めに表示
+        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
     }
 
     private fun openCalendar() {
