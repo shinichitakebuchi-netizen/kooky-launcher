@@ -6,8 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ResolveInfo
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Typeface
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -15,6 +18,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.AlarmClock
 import android.provider.CalendarContract
+import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
@@ -29,6 +33,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.graphics.drawable.toBitmap
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -68,13 +73,17 @@ class MainActivity : Activity() {
 
         loadApps()
 
+        // 通知が変化したらアイコンを再描画
+        NotificationService.onChange = {
+            runOnUiThread { appAdapter.notifyDataSetChanged() }
+        }
+
         clockText = TextView(this).apply {
             textSize = 46f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setOnClickListener { openClock() }
-            // 診断用：長押しで時計アプリ候補のパッケージ名を表示
             setOnLongClickListener { showClockDiagnostics(); true }
         }
         dateText = TextView(this).apply {
@@ -173,6 +182,7 @@ class MainActivity : Activity() {
         setContentView(content)
 
         applyFilter()
+        maybeAskNotificationAccess()
     }
 
     override fun onResume() {
@@ -180,6 +190,7 @@ class MainActivity : Activity() {
         sortApps()
         applyFilter()
         resetSearch()
+        appAdapter.notifyDataSetChanged() // 通知状態を反映
         timeHandler.removeCallbacks(tick)
         timeHandler.post(tick)
     }
@@ -189,7 +200,22 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(tick)
     }
 
-    // 時計アプリを開く（3段構え：直接起動→時計画面指定→アラーム画面）
+    // 通知アクセス権限が無ければ、初回だけ設定画面へ案内
+    private fun maybeAskNotificationAccess() {
+        val enabled = Settings.Secure.getString(
+            contentResolver, "enabled_notification_listeners"
+        )?.contains(packageName) == true
+        if (!enabled && !prefs.getBoolean("asked_notif", false)) {
+            prefs.edit().putBoolean("asked_notif", true).apply()
+            Toast.makeText(this,
+                "通知バッジを使うには「通知へのアクセス」でKooky Launcherを許可してください",
+                Toast.LENGTH_LONG).show()
+            try {
+                startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
+            } catch (e: Exception) {}
+        }
+    }
+
     private fun openClock() {
         val clockPackages = listOf(
             "com.google.android.deskclock",
@@ -217,7 +243,6 @@ class MainActivity : Activity() {
         Toast.makeText(this, "時計アプリが見つかりませんでした", Toast.LENGTH_SHORT).show()
     }
 
-    // 診断用：インストール済みアプリから「clock/時計」らしきパッケージ名を探して表示
     private fun showClockDiagnostics() {
         val pm = packageManager
         val intent = Intent(Intent.ACTION_MAIN, null).apply {
@@ -236,7 +261,6 @@ class MainActivity : Activity() {
         } else {
             "時計候補: " + hits.joinToString(" / ")
         }
-        // 長いので画面に長めに表示
         Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
     }
 
@@ -317,6 +341,23 @@ class MainActivity : Activity() {
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
 
+    // アイコンの右上に通知ドット（●）を重ねた画像を作る
+    private fun withBadge(base: Drawable): Drawable {
+        val size = dp(56)
+        val bmp = base.toBitmap(size, size).copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(bmp)
+        val radius = dp(7).toFloat()
+        val cx = size - radius - dp(2)
+        val cy = radius + dp(2)
+        // 縁取り（見やすさ用の白フチ）
+        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+        canvas.drawCircle(cx, cy, radius + dp(1.5f), stroke)
+        // 本体（オレンジのドット）
+        val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#FF8C00") }
+        canvas.drawCircle(cx, cy, radius, dot)
+        return BitmapDrawable(resources, bmp)
+    }
+
     inner class AppAdapter : BaseAdapter() {
         override fun getCount(): Int = shown.size
         override fun getItem(position: Int): Any = shown[position]
@@ -329,8 +370,11 @@ class MainActivity : Activity() {
                 gravity = Gravity.CENTER
                 setPadding(dp(4), dp(8), dp(4), dp(8))
             }
+            // 通知が来ているアプリならアイコンにドットを重ねる
+            val hasNotif = NotificationService.activePackages.contains(app.packageName)
+            val iconDrawable = if (hasNotif) withBadge(app.icon) else app.icon
             val icon = ImageView(this@MainActivity).apply {
-                setImageDrawable(app.icon)
+                setImageDrawable(iconDrawable)
                 layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
             }
             val label = TextView(this@MainActivity).apply {
