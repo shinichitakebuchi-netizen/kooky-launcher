@@ -400,4 +400,35 @@ class MainActivity : Activity() {
     inner class AppAdapter : BaseAdapter() {
         override fun getCount(): Int = shown.size
         override fun getItem(position: Int): Any = shown[position]
-        override
+        override fun getItemId(position: Int): Long = position.toLong()
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+            val app = shown[position]
+            val cell = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(4), dp(8), dp(4), dp(8))
+            }
+            val hasNotif = NotificationService.activePackages.contains(app.packageName)
+            val iconDrawable = if (hasNotif) withBadge(app.icon) else app.icon
+            val icon = ImageView(this@MainActivity).apply {
+                setImageDrawable(iconDrawable)
+                layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
+            }
+            cell.addView(icon)
+            // 名前表示がONのときだけラベルを付ける
+            if (showLabels) {
+                val label = TextView(this@MainActivity).apply {
+                    text = app.label
+                    setTextColor(Color.WHITE)
+                    textSize = 12f
+                    gravity = Gravity.CENTER
+                    maxLines = 1
+                    setPadding(0, dp(4), 0, 0)
+                }
+                cell.addView(label)
+            }
+            return cell
+        }
+    }
+}
