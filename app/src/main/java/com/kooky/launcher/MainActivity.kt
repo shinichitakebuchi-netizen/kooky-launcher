@@ -42,8 +42,8 @@ class MainActivity : Activity() {
 
     data class AppEntry(val label: String, val packageName: String, val icon: Drawable)
 
-    private val apps = mutableListOf<AppEntry>()   // 全アプリ（頻度順）
-    private val shown = mutableListOf<AppEntry>()   // 実際に表示する分（検索で絞られる）
+    private val apps = mutableListOf<AppEntry>()
+    private val shown = mutableListOf<AppEntry>()
     private lateinit var prefs: SharedPreferences
     private val appAdapter = AppAdapter()
 
@@ -339,20 +339,17 @@ class MainActivity : Activity() {
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
 
-    // アイコンの右上に通知ドット（●）を重ねた画像を作る（標準APIのみ）
     private fun withBadge(base: Drawable): Drawable {
         val size = dp(56)
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
-        // 元のアイコンを描く
         base.setBounds(0, 0, size, size)
         base.draw(canvas)
-        // 右上にドットを描く
         val radius = dp(7).toFloat()
         val cx = size - radius - dp(2)
         val cy = radius + dp(2)
         val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
-        canvas.drawCircle(cx, cy, radius + dp(1.5f), stroke)
+        canvas.drawCircle(cx, cy, radius + dp(2), stroke)
         val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#FF8C00") }
         canvas.drawCircle(cx, cy, radius, dot)
         return BitmapDrawable(resources, bmp)
