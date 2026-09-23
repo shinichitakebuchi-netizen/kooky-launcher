@@ -421,4 +421,155 @@ class MainActivity : Activity() {
         try {
             val builder = CalendarContract.CONTENT_URI.buildUpon().appendPath("time")
             ContentUris.appendId(builder, System.currentTimeMillis())
-            startActivity(Intent(Intent.ACTION_VIEW,
+            startActivity(Intent(Intent.ACTION_VIEW, builder.build()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            Toast.makeText(this, "カレンダーを開けませんでした", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun resetSearch() {
+        searchBar.setText("")
+        searchBar.clearFocus()
+        searchBar.isFocusable = false
+        searchBar.isFocusableInTouchMode = false
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.hideSoftInputFromWindow(searchBar.windowToken, 0)
+    }
+
+    override fun onBackPressed() {
+        if (!searchBar.text.isNullOrEmpty()) resetSearch() else super.onBackPressed()
+    }
+
+    private fun loadApps() {
+        val pm = packageManager
+        val intent = Intent(Intent.ACTION_MAIN, null).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
+        val list: List<ResolveInfo> = pm.queryIntentActivities(intent, 0)
+        apps.clear()
+        for (ri in list) {
+            val pkg = ri.activityInfo.packageName
+            if (pkg == packageName) continue
+            apps.add(AppEntry(ri.loadLabel(pm).toString(), pkg, ri.loadIcon(pm)))
+        }
+        sortApps()
+    }
+
+    private fun sortApps() {
+        apps.sortWith(
+            compareByDescending<AppEntry> { prefs.getInt(it.packageName, 0) }
+                .thenBy { displayName(it).lowercase() }
+        )
+    }
+
+    private fun toHiragana(s: String): String {
+        val sb = StringBuilder()
+        for (c in s) { if (c in '\u30A1'..'\u30F6') sb.append(c - 0x60) else sb.append(c) }
+        return sb.toString()
+    }
+
+    private fun applyFilter() {
+        val raw = searchBar.text?.toString()?.trim() ?: ""
+        shown.clear()
+        if (raw.isEmpty()) {
+            shown.addAll(apps)
+        } else {
+            val q = toHiragana(raw.lowercase())
+            val extra = readingMap.entries.filter { it.key.contains(q) || q.contains(it.key) }.map { it.value }
+            shown.addAll(apps.filter { app ->
+                val name = displayName(app).lowercase()
+                toHiragana(name).contains(q) || extra.any { name.contains(it) }
+            })
+        }
+        appAdapter.notifyDataSetChanged()
+    }
+
+    private fun launchApp(pkg: String) {
+        val count = prefs.getInt(pkg, 0) + 1
+        prefs.edit().putInt(pkg, count).apply()
+        resetSearch()
+        packageManager.getLaunchIntentForPackage(pkg)?.let { startActivity(it) }
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun withBadge(base: Drawable): Drawable {
+        val size = dp(56)
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        base.setBounds(0, 0, size, size); base.draw(canvas)
+        drawDot(canvas, size)
+        return BitmapDrawable(resources, bmp)
+    }
+
+    private fun designIcon(app: AppEntry, withNotif: Boolean): Drawable {
+        val size = dp(56)
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        val inset = dp(2).toFloat()
+        val radius = dp(6).toFloat()
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
+        canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, fill)
+        val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; color = Color.WHITE; strokeWidth = dp(2).toFloat()
+        }
+        canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, border)
+        if (showInitial) {
+            val ch = firstChar(displayName(app))
+            if (ch.isNotEmpty()) {
+                val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE; textSize = size * 0.42f
+                    textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT
+                }
+                val cy = size / 2f - (tp.descent() + tp.ascent()) / 2f
+                canvas.drawText(ch, size / 2f, cy, tp)
+            }
+        }
+        if (withNotif) drawDot(canvas, size)
+        return BitmapDrawable(resources, bmp)
+    }
+
+    private fun firstChar(name: String): String {
+        val t = name.trim()
+        return if (t.isEmpty()) "" else t.substring(0, 1).uppercase()
+    }
+
+    private fun drawDot(canvas: Canvas, size: Int) {
+        val radius = dp(7).toFloat()
+        val cx = size - radius - dp(2)
+        val cy = radius + dp(2)
+        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+        canvas.drawCircle(cx, cy, radius + dp(2), stroke)
+        val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#FF8C00") }
+        canvas.drawCircle(cx, cy, radius, dot)
+    }
+
+    inner class AppAdapter : BaseAdapter() {
+        override fun getCount(): Int = shown.size
+        override fun getItem(position: Int): Any = shown[position]
+        override fun getItemId(position: Int): Long = position.toLong()
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+            val app = shown[position]
+            val cell = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(4), dp(8), dp(4), dp(8))
+            }
+            val hasNotif = NotificationService.activePackages.contains(app.packageName)
+            val iconDrawable = if (useDesignIcon) designIcon(app, hasNotif)
+                else if (hasNotif) withBadge(app.icon) else app.icon
+            val icon = ImageView(this@MainActivity).apply {
+                setImageDrawable(iconDrawable)
+                layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
+            }
+            cell.addView(icon)
+            val label = TextView(this@MainActivity).apply {
+                text = if (showLabels) displayName(app) else ""
+                setTextColor(Color.WHITE); textSize = 12f
+                gravity = Gravity.CENTER; maxLines = 1
+                setPadding(0, dp(4), 0, 0)
+            }
+            cell.addView(label)
+            return cell
+        }
+    }
+}
