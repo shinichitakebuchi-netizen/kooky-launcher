@@ -3,7 +3,6 @@ package com.kooky.launcher
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RadialGradient
@@ -24,7 +23,6 @@ class WeatherView(context: Context) : View(context) {
         style = Paint.Style.STROKE; color = Color.WHITE; strokeCap = Paint.Cap.ROUND
     }
 
-    // 雪・雨の粒の状態
     private data class Particle(var x: Float, var y: Float, var phase: Float)
     private val drops = ArrayList<Particle>()
     private val flakes = ArrayList<Particle>()
@@ -102,13 +100,27 @@ class WeatherView(context: Context) : View(context) {
 
     private fun drawRain(canvas: Canvas, cx: Float, cy: Float, u: Float) {
         val s = u * 0.2f
-        canvas.drawPath(cloudPath(cx, cy - u * 0.14f, s), white)
-        if (drops.isEmpty()) for (i in 0 until 6) drops.add(Particle(cx - u*0.25f + i*u*0.1f, cy + Math.random().toFloat()*u*0.3f, 0f))
+        val cloudY = cy - u * 0.14f
+        canvas.drawPath(cloudPath(cx, cloudY, s), white)
+        // 雨粒の初期化（雲の下の帯にランダム配置）
+        if (drops.isEmpty()) {
+            for (i in 0 until 6) {
+                drops.add(Particle(
+                    cx - u * 0.28f + Math.random().toFloat() * u * 0.56f,
+                    cloudY + u * 0.15f + Math.random().toFloat() * u * 0.5f,
+                    0f))
+            }
+        }
         stroke.strokeWidth = u * 0.022f
+        val bottom = cloudY + u * 0.7f // 降る下限
         for (d in drops) {
-            canvas.drawLine(d.x, d.y, d.x - u*0.03f, d.y + u*0.09f, stroke)
-            d.y += u * 0.03f; d.x -= u * 0.008f
-            if (d.y > height) { d.y = cy; d.x += u * 0.25f }
+            canvas.drawLine(d.x, d.y, d.x - u * 0.02f, d.y + u * 0.09f, stroke)
+            d.y += u * 0.035f
+            if (d.y > bottom) {
+                // 雲の真下の帯に確実に戻す（横位置もランダムでリセット）
+                d.y = cloudY + u * 0.12f
+                d.x = cx - u * 0.28f + Math.random().toFloat() * u * 0.56f
+            }
         }
     }
 
@@ -131,24 +143,38 @@ class WeatherView(context: Context) : View(context) {
 
     private fun drawSnow(canvas: Canvas, cx: Float, cy: Float, u: Float) {
         val s = u * 0.2f
-        canvas.drawPath(cloudPath(cx, cy - u * 0.14f, s), white)
-        if (flakes.isEmpty()) for (i in 0 until 6) flakes.add(Particle(cx - u*0.25f + i*u*0.1f, cy + Math.random().toFloat()*u*0.3f, Math.random().toFloat()*6f))
+        val cloudY = cy - u * 0.14f
+        canvas.drawPath(cloudPath(cx, cloudY, s), white)
+        if (flakes.isEmpty()) {
+            for (i in 0 until 6) {
+                flakes.add(Particle(
+                    cx - u * 0.28f + Math.random().toFloat() * u * 0.56f,
+                    cloudY + u * 0.15f + Math.random().toFloat() * u * 0.5f,
+                    Math.random().toFloat() * 6f))
+            }
+        }
+        val bottom = cloudY + u * 0.72f
         for (f in flakes) {
             canvas.drawCircle(f.x, f.y, u * 0.022f, white)
-            f.y += u * 0.014f; f.x += (Math.sin(f.phase.toDouble()) * u * 0.01f).toFloat(); f.phase += 0.15f
-            if (f.y > height) { f.y = cy; f.x = cx - u*0.25f + Math.random().toFloat()*u*0.5f }
+            f.y += u * 0.016f
+            f.x += (Math.sin(f.phase.toDouble()) * u * 0.008f).toFloat()
+            f.phase += 0.15f
+            if (f.y > bottom) {
+                f.y = cloudY + u * 0.12f
+                f.x = cx - u * 0.28f + Math.random().toFloat() * u * 0.56f
+            }
         }
     }
 
     private fun drawNight(canvas: Canvas, cx: Float, cy: Float, u: Float) {
         val r = u * 0.2f
-        // 三日月：満円を描いて、少しずらした背景色の円でえぐる
         val save = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
         canvas.drawCircle(cx - u*0.03f, cy, r, white)
-        val cut = Paint(Paint.ANTI_ALIAS_FLAG).apply { xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR) }
+        val cut = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+        }
         canvas.drawCircle(cx + u*0.08f, cy - u*0.05f, r * 0.95f, cut)
         canvas.restoreToCount(save)
-        // 星の瞬き
         val stars = arrayOf(floatArrayOf(-0.28f,-0.28f), floatArrayOf(0.3f,-0.18f), floatArrayOf(-0.2f,0.28f), floatArrayOf(0.28f,0.26f))
         for ((i, st) in stars.withIndex()) {
             val tw = (Math.sin(t * 1.5 + i) * 0.5 + 0.5).toFloat()
