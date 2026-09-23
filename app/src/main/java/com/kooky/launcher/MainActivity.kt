@@ -68,7 +68,7 @@ class MainActivity : Activity() {
     // グリッドの外側余白
     private val sideMarginDp = 12
     // 各アプリセルの内側余白（getViewのsetPadding左右と合わせる）
-    private val cellPadDp = 4
+    private val cellPadDp = 6
 
     private val fallbackLat = 36.389
     private val fallbackLon = 139.063
