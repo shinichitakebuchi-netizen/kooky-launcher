@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- 他アプリ一覧を取得するために必要（Android 11以降の可視性制限対策） -->
     <queries>
         <intent>
@@ -27,7 +29,6 @@
             </intent-filter>
         </activity>
 
-        <!-- 通知を読むサービス（通知バッジ用） -->
         <service
             android:name=".NotificationService"
             android:exported="false"
