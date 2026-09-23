@@ -23,7 +23,10 @@ import android.provider.AlarmClock
 import android.provider.CalendarContract
 import android.provider.Settings
 import android.text.Editable
+import android.text.SpannableString
+import android.text.Spanned
 import android.text.TextWatcher
+import android.text.style.RelativeSizeSpan
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -54,12 +57,13 @@ class MainActivity : Activity() {
     private lateinit var dateText: TextView
 
     private val gridColumns = 4
-    private val topGapDp = 290
+    // 検索バー・アプリを下げる余白（1列ぶん下げて 380 に）
+    private val topGapDp = 380
     private val appsTopPadDp = 4
 
-    private var showLabels = true          // アプリ名の表示/非表示
-    private var useDesignIcon = true       // 統一デザインアイコンを使うか
-    private var showInitial = true         // true=案Y(頭文字) / false=案X(記号なし)
+    private var showLabels = true
+    private var useDesignIcon = true
+    private var showInitial = true
 
     private val readingMap = mapOf(
         "あはも" to "ahamo",
@@ -68,12 +72,20 @@ class MainActivity : Activity() {
     )
 
     private val timeHandler = Handler(Looper.getMainLooper())
-    private val clockFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+    private val hmFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    private val secFormat = SimpleDateFormat("ss", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("yyyy.MM.dd-EEE", Locale.JAPANESE)
     private val tick = object : Runnable {
         override fun run() {
             val now = Date()
-            clockText.text = clockFormat.format(now)
+            // 時:分は大きく、秒は小さく（0.5倍）
+            val hm = hmFormat.format(now)
+            val ss = secFormat.format(now)
+            val text = "$hm $ss"
+            val sp = SpannableString(text)
+            val secStart = hm.length + 1
+            sp.setSpan(RelativeSizeSpan(0.5f), secStart, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            clockText.text = sp
             dateText.text = dateFormat.format(now)
             timeHandler.postDelayed(this, 1000)
         }
@@ -118,7 +130,8 @@ class MainActivity : Activity() {
 
         searchBar = EditText(this).apply {
             setSingleLine(true)
-            setTextColor(Color.parseColor("#101014"))
+            setTextColor(Color.WHITE)                 // 透過背景に合わせて白文字
+            setHintTextColor(Color.parseColor("#888888"))
             background = null
             val p = dp(10)
             setPadding(p, p, p, p)
@@ -145,22 +158,23 @@ class MainActivity : Activity() {
             }
         }
 
+        // 検索アイコン：白線の○（中空の円）
         val searchIcon = ImageView(this).apply {
-            setImageResource(android.R.drawable.ic_menu_search)
-            setColorFilter(Color.parseColor("#101014"))
+            setImageDrawable(circleIcon())
             val p = dp(8)
             setPadding(p, p, p, p)
-            // 長押しで設定メニュー
             setOnLongClickListener { showSettingsMenu(); true }
         }
 
+        // 検索バー：角丸6・枠オレンジ・中は透過
         val searchBarRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(12).toFloat()
-                setColor(Color.parseColor("#FF8C00"))
+                cornerRadius = dp(6).toFloat()
+                setColor(Color.TRANSPARENT)                       // 中は透過
+                setStroke(dp(2), Color.parseColor("#FF8C00"))     // 枠オレンジ
             }
             val ph = dp(6)
             setPadding(ph, 0, ph, 0)
@@ -178,7 +192,6 @@ class MainActivity : Activity() {
             setOnItemClickListener { _, _, position, _ ->
                 launchApp(shown[position].packageName)
             }
-            // アプリ長押しで名前変更
             setOnItemLongClickListener { _, _, position, _ ->
                 renameApp(shown[position]); true
             }
@@ -220,7 +233,21 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(tick)
     }
 
-    // 設定メニュー（検索アイコン長押し）
+    // 白線の○アイコンを生成
+    private fun circleIcon(): Drawable {
+        val size = dp(24)
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            color = Color.WHITE
+            strokeWidth = dp(2).toFloat()
+        }
+        val r = size / 2f - dp(2)
+        canvas.drawCircle(size / 2f, size / 2f, r, p)
+        return BitmapDrawable(resources, bmp)
+    }
+
     private fun showSettingsMenu() {
         val items = arrayOf(
             if (showLabels) "アプリ名: 表示 → 非表示にする" else "アプリ名: 非表示 → 表示にする",
@@ -240,7 +267,6 @@ class MainActivity : Activity() {
             .show()
     }
 
-    // アプリ名の変更（アプリ長押し）
     private fun renameApp(app: AppEntry) {
         val input = EditText(this).apply {
             setText(displayName(app))
@@ -254,7 +280,7 @@ class MainActivity : Activity() {
                 if (newName.isNotEmpty()) {
                     prefs.edit().putString("name_" + app.packageName, newName).apply()
                 } else {
-                    prefs.edit().remove("name_" + app.packageName).apply() // 空なら元に戻す
+                    prefs.edit().remove("name_" + app.packageName).apply()
                 }
                 sortApps()
                 applyFilter()
@@ -268,7 +294,6 @@ class MainActivity : Activity() {
             .show()
     }
 
-    // 表示名（変更済みならそれ、無ければ元のラベル）
     private fun displayName(app: AppEntry): String =
         prefs.getString("name_" + app.packageName, null) ?: app.label
 
@@ -428,7 +453,6 @@ class MainActivity : Activity() {
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
 
-    // 通知ドットを重ねる
     private fun withBadge(base: Drawable): Drawable {
         val size = dp(56)
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
@@ -439,24 +463,20 @@ class MainActivity : Activity() {
         return BitmapDrawable(resources, bmp)
     }
 
-    // 統一デザインアイコン（□枠白・中黒・角丸6、案Yなら頭文字）を作る
     private fun designIcon(app: AppEntry, withNotif: Boolean): Drawable {
         val size = dp(56)
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
         val inset = dp(2).toFloat()
         val radius = dp(6).toFloat()
-        // 中：黒
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
         canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, fill)
-        // 枠：白（細め）
         val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             color = Color.WHITE
             strokeWidth = dp(2).toFloat()
         }
         canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, border)
-        // 案Y：頭文字（システムフォント）
         if (showInitial) {
             val ch = firstChar(displayName(app))
             if (ch.isNotEmpty()) {
@@ -464,10 +484,8 @@ class MainActivity : Activity() {
                     color = Color.WHITE
                     textSize = size * 0.42f
                     textAlign = Paint.Align.CENTER
-                    typeface = Typeface.DEFAULT   // システムフォント
+                    typeface = Typeface.DEFAULT
                 }
-                val bounds = Rect()
-                tp.getTextBounds(ch, 0, ch.length, bounds)
                 val cx = size / 2f
                 val cy = size / 2f - (tp.descent() + tp.ascent()) / 2f
                 canvas.drawText(ch, cx, cy, tp)
@@ -477,13 +495,11 @@ class MainActivity : Activity() {
         return BitmapDrawable(resources, bmp)
     }
 
-    // 表示名の先頭1文字を取り出す
     private fun firstChar(name: String): String {
         val t = name.trim()
         return if (t.isEmpty()) "" else t.substring(0, 1).uppercase()
     }
 
-    // 右上のオレンジ通知ドット
     private fun drawDot(canvas: Canvas, size: Int) {
         val radius = dp(7).toFloat()
         val cx = size - radius - dp(2)
@@ -508,9 +524,9 @@ class MainActivity : Activity() {
             }
             val hasNotif = NotificationService.activePackages.contains(app.packageName)
             val iconDrawable = if (useDesignIcon) {
-                designIcon(app, hasNotif)                 // 統一デザイン
+                designIcon(app, hasNotif)
             } else {
-                if (hasNotif) withBadge(app.icon) else app.icon   // 元アイコン
+                if (hasNotif) withBadge(app.icon) else app.icon
             }
             val icon = ImageView(this@MainActivity).apply {
                 setImageDrawable(iconDrawable)
