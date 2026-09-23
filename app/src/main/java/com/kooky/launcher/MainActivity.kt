@@ -65,6 +65,8 @@ class MainActivity : Activity() {
     private val gridColumns = 4
     private val topGapDp = 380
     private val appsTopPadDp = 4
+    // 画面の左右共通の余白（バーもグリッドもこれで端を揃える）
+    private val sideMarginDp = 12
 
     private val fallbackLat = 36.389
     private val fallbackLon = 139.063
@@ -120,7 +122,6 @@ class MainActivity : Activity() {
 
         weatherView = WeatherView(this).apply {
             weatherType = prefs.getInt("weather_type", 0)
-            // タップで手動更新
             setOnClickListener {
                 Toast.makeText(this@MainActivity, "天気を更新中…", Toast.LENGTH_SHORT).show()
                 updateWeatherAtCurrentLocation(true)
@@ -198,15 +199,15 @@ class MainActivity : Activity() {
                 setColor(Color.TRANSPARENT)
                 setStroke(dp(2), Color.parseColor("#FF8C00"))
             }
-            val ph = dp(6)
-            setPadding(ph, 0, ph, 0)
+            // 内側の左右パディングを0にして、バーの枠がグリッドの端と揃うようにする
+            setPadding(0, 0, 0, 0)
             addView(searchBar, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(searchIcon, LinearLayout.LayoutParams(dp(40), dp(40)))
         }
 
         val grid = GridView(this).apply {
             numColumns = gridColumns
-            val pad = dp(12)
+            val pad = dp(sideMarginDp)
             setPadding(pad, dp(appsTopPadDp), pad, dp(24))
             clipToPadding = false
             verticalSpacing = dp(16)
@@ -221,14 +222,14 @@ class MainActivity : Activity() {
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#101014"))
+            setBackgroundColor(Color.BLACK) // 完全な黒
             isFocusable = true
             isFocusableInTouchMode = true
-            val m = dp(12)
             addView(topArea)
+            // バーの左右マージンをグリッドのパディングと同じ sideMarginDp に統一
             addView(searchBarRow, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(m, 0, m, dp(8))
+                setMargins(dp(sideMarginDp), 0, dp(sideMarginDp), dp(8))
             })
             addView(grid, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -276,7 +277,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // 現在地→天気更新。showResult=trueなら結果をトーストで知らせる（手動更新用）
     private fun updateWeatherAtCurrentLocation(showResult: Boolean) {
         var lat = fallbackLat
         var lon = fallbackLon
