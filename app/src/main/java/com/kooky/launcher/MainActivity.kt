@@ -1,6 +1,7 @@
 package com.kooky.launcher
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
@@ -10,6 +11,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
@@ -55,11 +57,10 @@ class MainActivity : Activity() {
     private val topGapDp = 290
     private val appsTopPadDp = 4
 
-    // アプリ名を表示するかどうか（長押しで切替・保存される）
-    private var showLabels = true
+    private var showLabels = true          // アプリ名の表示/非表示
+    private var useDesignIcon = true       // 統一デザインアイコンを使うか
+    private var showInitial = true         // true=案Y(頭文字) / false=案X(記号なし)
 
-    // 読みがな→アプリ英名 の変換ペア（必要に応じてここに足す）
-    // キーはひらがなで書く。カタカナは自動でひらがな化して照合するので、ひらがなだけでOK
     private val readingMap = mapOf(
         "あはも" to "ahamo",
         "ぺいぺい" to "paypay",
@@ -82,6 +83,8 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences("usage", Context.MODE_PRIVATE)
         showLabels = prefs.getBoolean("show_labels", true)
+        useDesignIcon = prefs.getBoolean("use_design_icon", true)
+        showInitial = prefs.getBoolean("show_initial", true)
 
         loadApps()
 
@@ -147,8 +150,8 @@ class MainActivity : Activity() {
             setColorFilter(Color.parseColor("#101014"))
             val p = dp(8)
             setPadding(p, p, p, p)
-            // 長押しでアプリ名の表示/非表示を切り替え
-            setOnLongClickListener { toggleLabels(); true }
+            // 長押しで設定メニュー
+            setOnLongClickListener { showSettingsMenu(); true }
         }
 
         val searchBarRow = LinearLayout(this).apply {
@@ -174,6 +177,10 @@ class MainActivity : Activity() {
             adapter = appAdapter
             setOnItemClickListener { _, _, position, _ ->
                 launchApp(shown[position].packageName)
+            }
+            // アプリ長押しで名前変更
+            setOnItemLongClickListener { _, _, position, _ ->
+                renameApp(shown[position]); true
             }
         }
 
@@ -213,14 +220,57 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(tick)
     }
 
-    // アプリ名の表示/非表示を切り替えて保存
-    private fun toggleLabels() {
-        showLabels = !showLabels
-        prefs.edit().putBoolean("show_labels", showLabels).apply()
-        appAdapter.notifyDataSetChanged()
-        Toast.makeText(this, if (showLabels) "アプリ名: 表示" else "アプリ名: 非表示",
-            Toast.LENGTH_SHORT).show()
+    // 設定メニュー（検索アイコン長押し）
+    private fun showSettingsMenu() {
+        val items = arrayOf(
+            if (showLabels) "アプリ名: 表示 → 非表示にする" else "アプリ名: 非表示 → 表示にする",
+            if (useDesignIcon) "アイコン: デザイン → 元に戻す" else "アイコン: 元 → デザインにする",
+            if (showInitial) "記号: 頭文字(Y) → 記号なし(X)" else "記号: 記号なし(X) → 頭文字(Y)"
+        )
+        AlertDialog.Builder(this)
+            .setTitle("設定")
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> { showLabels = !showLabels; prefs.edit().putBoolean("show_labels", showLabels).apply() }
+                    1 -> { useDesignIcon = !useDesignIcon; prefs.edit().putBoolean("use_design_icon", useDesignIcon).apply() }
+                    2 -> { showInitial = !showInitial; prefs.edit().putBoolean("show_initial", showInitial).apply() }
+                }
+                appAdapter.notifyDataSetChanged()
+            }
+            .show()
     }
+
+    // アプリ名の変更（アプリ長押し）
+    private fun renameApp(app: AppEntry) {
+        val input = EditText(this).apply {
+            setText(displayName(app))
+            setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("名前を変更")
+            .setView(input)
+            .setPositiveButton("保存") { _, _ ->
+                val newName = input.text.toString().trim()
+                if (newName.isNotEmpty()) {
+                    prefs.edit().putString("name_" + app.packageName, newName).apply()
+                } else {
+                    prefs.edit().remove("name_" + app.packageName).apply() // 空なら元に戻す
+                }
+                sortApps()
+                applyFilter()
+            }
+            .setNegativeButton("元に戻す") { _, _ ->
+                prefs.edit().remove("name_" + app.packageName).apply()
+                sortApps()
+                applyFilter()
+            }
+            .setNeutralButton("キャンセル", null)
+            .show()
+    }
+
+    // 表示名（変更済みならそれ、無ければ元のラベル）
+    private fun displayName(app: AppEntry): String =
+        prefs.getString("name_" + app.packageName, null) ?: app.label
 
     private fun maybeAskNotificationAccess() {
         val enabled = Settings.Secure.getString(
@@ -337,15 +387,13 @@ class MainActivity : Activity() {
     private fun sortApps() {
         apps.sortWith(
             compareByDescending<AppEntry> { prefs.getInt(it.packageName, 0) }
-                .thenBy { it.label.lowercase() }
+                .thenBy { displayName(it).lowercase() }
         )
     }
 
-    // カタカナをひらがなに変換（照合をゆるくするため）
     private fun toHiragana(s: String): String {
         val sb = StringBuilder()
         for (c in s) {
-            // カタカナ(ァ-ン)をひらがなにずらす
             if (c in '\u30A1'..'\u30F6') sb.append(c - 0x60) else sb.append(c)
         }
         return sb.toString()
@@ -358,12 +406,11 @@ class MainActivity : Activity() {
             shown.addAll(apps)
         } else {
             val q = toHiragana(raw.lowercase())
-            // 読みがなペアに一致すれば、英名にも読み替えて一緒に検索
             val extra = readingMap.entries
                 .filter { it.key.contains(q) || q.contains(it.key) }
                 .map { it.value }
             shown.addAll(apps.filter { app ->
-                val name = app.label.lowercase()
+                val name = displayName(app).lowercase()
                 val nameHira = toHiragana(name)
                 nameHira.contains(q) || extra.any { name.contains(it) }
             })
@@ -381,12 +428,63 @@ class MainActivity : Activity() {
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).toInt()
 
+    // 通知ドットを重ねる
     private fun withBadge(base: Drawable): Drawable {
         val size = dp(56)
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
         base.setBounds(0, 0, size, size)
         base.draw(canvas)
+        drawDot(canvas, size)
+        return BitmapDrawable(resources, bmp)
+    }
+
+    // 統一デザインアイコン（□枠白・中黒・角丸6、案Yなら頭文字）を作る
+    private fun designIcon(app: AppEntry, withNotif: Boolean): Drawable {
+        val size = dp(56)
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        val inset = dp(2).toFloat()
+        val radius = dp(6).toFloat()
+        // 中：黒
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
+        canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, fill)
+        // 枠：白（細め）
+        val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            color = Color.WHITE
+            strokeWidth = dp(2).toFloat()
+        }
+        canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, border)
+        // 案Y：頭文字（システムフォント）
+        if (showInitial) {
+            val ch = firstChar(displayName(app))
+            if (ch.isNotEmpty()) {
+                val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    textSize = size * 0.42f
+                    textAlign = Paint.Align.CENTER
+                    typeface = Typeface.DEFAULT   // システムフォント
+                }
+                val bounds = Rect()
+                tp.getTextBounds(ch, 0, ch.length, bounds)
+                val cx = size / 2f
+                val cy = size / 2f - (tp.descent() + tp.ascent()) / 2f
+                canvas.drawText(ch, cx, cy, tp)
+            }
+        }
+        if (withNotif) drawDot(canvas, size)
+        return BitmapDrawable(resources, bmp)
+    }
+
+    // 表示名の先頭1文字を取り出す
+    private fun firstChar(name: String): String {
+        val t = name.trim()
+        return if (t.isEmpty()) "" else t.substring(0, 1).uppercase()
+    }
+
+    // 右上のオレンジ通知ドット
+    private fun drawDot(canvas: Canvas, size: Int) {
         val radius = dp(7).toFloat()
         val cx = size - radius - dp(2)
         val cy = radius + dp(2)
@@ -394,7 +492,6 @@ class MainActivity : Activity() {
         canvas.drawCircle(cx, cy, radius + dp(2), stroke)
         val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#FF8C00") }
         canvas.drawCircle(cx, cy, radius, dot)
-        return BitmapDrawable(resources, bmp)
     }
 
     inner class AppAdapter : BaseAdapter() {
@@ -410,16 +507,19 @@ class MainActivity : Activity() {
                 setPadding(dp(4), dp(8), dp(4), dp(8))
             }
             val hasNotif = NotificationService.activePackages.contains(app.packageName)
-            val iconDrawable = if (hasNotif) withBadge(app.icon) else app.icon
+            val iconDrawable = if (useDesignIcon) {
+                designIcon(app, hasNotif)                 // 統一デザイン
+            } else {
+                if (hasNotif) withBadge(app.icon) else app.icon   // 元アイコン
+            }
             val icon = ImageView(this@MainActivity).apply {
                 setImageDrawable(iconDrawable)
                 layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
             }
             cell.addView(icon)
-            // 名前表示がONのときだけラベルを付ける
             if (showLabels) {
                 val label = TextView(this@MainActivity).apply {
-                    text = app.label
+                    text = displayName(app)
                     setTextColor(Color.WHITE)
                     textSize = 12f
                     gravity = Gravity.CENTER
