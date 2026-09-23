@@ -57,7 +57,6 @@ class MainActivity : Activity() {
     private lateinit var dateText: TextView
 
     private val gridColumns = 4
-    // 検索バー・アプリを下げる余白（1列ぶん下げて 380 に）
     private val topGapDp = 380
     private val appsTopPadDp = 4
 
@@ -78,13 +77,13 @@ class MainActivity : Activity() {
     private val tick = object : Runnable {
         override fun run() {
             val now = Date()
-            // 時:分は大きく、秒は小さく（0.5倍）
             val hm = hmFormat.format(now)
             val ss = secFormat.format(now)
             val text = "$hm $ss"
             val sp = SpannableString(text)
             val secStart = hm.length + 1
-            sp.setSpan(RelativeSizeSpan(0.5f), secStart, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            // 秒は時分の0.6倍（少し大きめに調整）
+            sp.setSpan(RelativeSizeSpan(0.6f), secStart, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             clockText.text = sp
             dateText.text = dateFormat.format(now)
             timeHandler.postDelayed(this, 1000)
@@ -130,7 +129,7 @@ class MainActivity : Activity() {
 
         searchBar = EditText(this).apply {
             setSingleLine(true)
-            setTextColor(Color.WHITE)                 // 透過背景に合わせて白文字
+            setTextColor(Color.WHITE)
             setHintTextColor(Color.parseColor("#888888"))
             background = null
             val p = dp(10)
@@ -158,7 +157,6 @@ class MainActivity : Activity() {
             }
         }
 
-        // 検索アイコン：白線の○（中空の円）
         val searchIcon = ImageView(this).apply {
             setImageDrawable(circleIcon())
             val p = dp(8)
@@ -166,15 +164,14 @@ class MainActivity : Activity() {
             setOnLongClickListener { showSettingsMenu(); true }
         }
 
-        // 検索バー：角丸6・枠オレンジ・中は透過
         val searchBarRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(6).toFloat()
-                setColor(Color.TRANSPARENT)                       // 中は透過
-                setStroke(dp(2), Color.parseColor("#FF8C00"))     // 枠オレンジ
+                setColor(Color.TRANSPARENT)
+                setStroke(dp(2), Color.parseColor("#FF8C00"))
             }
             val ph = dp(6)
             setPadding(ph, 0, ph, 0)
@@ -233,7 +230,6 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(tick)
     }
 
-    // 白線の○アイコンを生成
     private fun circleIcon(): Drawable {
         val size = dp(24)
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
@@ -533,17 +529,16 @@ class MainActivity : Activity() {
                 layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
             }
             cell.addView(icon)
-            if (showLabels) {
-                val label = TextView(this@MainActivity).apply {
-                    text = displayName(app)
-                    setTextColor(Color.WHITE)
-                    textSize = 12f
-                    gravity = Gravity.CENTER
-                    maxLines = 1
-                    setPadding(0, dp(4), 0, 0)
-                }
-                cell.addView(label)
+            // ラベルは常に領域を確保（名前OFFでも高さは同じ→アイコン位置が固定される）
+            val label = TextView(this@MainActivity).apply {
+                text = if (showLabels) displayName(app) else ""
+                setTextColor(Color.WHITE)
+                textSize = 12f
+                gravity = Gravity.CENTER
+                maxLines = 1
+                setPadding(0, dp(4), 0, 0)
             }
+            cell.addView(label)
             return cell
         }
     }
