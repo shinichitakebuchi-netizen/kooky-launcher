@@ -65,8 +65,10 @@ class MainActivity : Activity() {
     private val gridColumns = 4
     private val topGapDp = 380
     private val appsTopPadDp = 4
-    // 画面の左右共通の余白（バーもグリッドもこれで端を揃える）
+    // グリッドの外側余白
     private val sideMarginDp = 12
+    // 各アプリセルの内側余白（getViewのsetPadding左右と合わせる）
+    private val cellPadDp = 4
 
     private val fallbackLat = 36.389
     private val fallbackLon = 139.063
@@ -199,7 +201,6 @@ class MainActivity : Activity() {
                 setColor(Color.TRANSPARENT)
                 setStroke(dp(2), Color.parseColor("#FF8C00"))
             }
-            // 内側の左右パディングを0にして、バーの枠がグリッドの端と揃うようにする
             setPadding(0, 0, 0, 0)
             addView(searchBar, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(searchIcon, LinearLayout.LayoutParams(dp(40), dp(40)))
@@ -222,14 +223,15 @@ class MainActivity : Activity() {
 
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.BLACK) // 完全な黒
+            setBackgroundColor(Color.BLACK)
             isFocusable = true
             isFocusableInTouchMode = true
             addView(topArea)
-            // バーの左右マージンをグリッドのパディングと同じ sideMarginDp に統一
+            // バーの左右端を、アイコン枠の位置（グリッド余白＋セル内側余白）に合わせる
+            val barMargin = dp(sideMarginDp + cellPadDp)
             addView(searchBarRow, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(dp(sideMarginDp), 0, dp(sideMarginDp), dp(8))
+                setMargins(barMargin, 0, barMargin, dp(8))
             })
             addView(grid, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -561,7 +563,7 @@ class MainActivity : Activity() {
             val cell = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(dp(4), dp(8), dp(4), dp(8))
+                setPadding(dp(cellPadDp), dp(8), dp(cellPadDp), dp(8))
             }
             val hasNotif = NotificationService.activePackages.contains(app.packageName)
             val iconDrawable = if (useDesignIcon) designIcon(app, hasNotif)
