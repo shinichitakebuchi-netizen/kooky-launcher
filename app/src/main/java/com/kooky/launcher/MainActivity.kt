@@ -66,7 +66,6 @@ class MainActivity : Activity() {
     private val topGapDp = 380
     private val appsTopPadDp = 4
 
-    // 位置が取れなかったときの保険＝前橋
     private val fallbackLat = 36.389
     private val fallbackLon = 139.063
     private val LOC_REQ = 1001
@@ -101,7 +100,7 @@ class MainActivity : Activity() {
 
     private val weatherTick = object : Runnable {
         override fun run() {
-            updateWeatherAtCurrentLocation()
+            updateWeatherAtCurrentLocation(false)
             timeHandler.postDelayed(this, 60 * 60 * 1000L)
         }
     }
@@ -121,6 +120,11 @@ class MainActivity : Activity() {
 
         weatherView = WeatherView(this).apply {
             weatherType = prefs.getInt("weather_type", 0)
+            // タップで手動更新
+            setOnClickListener {
+                Toast.makeText(this@MainActivity, "天気を更新中…", Toast.LENGTH_SHORT).show()
+                updateWeatherAtCurrentLocation(true)
+            }
         }
 
         clockText = TextView(this).apply {
@@ -255,7 +259,6 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(weatherTick)
     }
 
-    // 位置情報の許可を求める（未許可なら）
     private fun maybeAskLocation() {
         val ok = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
                  checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -269,12 +272,12 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == LOC_REQ) {
-            updateWeatherAtCurrentLocation() // 許可の可否に関わらず、取れる範囲で天気更新
+            updateWeatherAtCurrentLocation(false)
         }
     }
 
-    // 現在地を取得して、その地点の天気を更新（取れなければ前橋）
-    private fun updateWeatherAtCurrentLocation() {
+    // 現在地→天気更新。showResult=trueなら結果をトーストで知らせる（手動更新用）
+    private fun updateWeatherAtCurrentLocation(showResult: Boolean) {
         var lat = fallbackLat
         var lon = fallbackLon
         try {
@@ -282,17 +285,16 @@ class MainActivity : Activity() {
                           checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
             if (granted) {
                 val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                // 最後に取得された位置（GPS→ネットワークの順で拾う）
                 val loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
                     ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
                     ?: lm.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
                 if (loc != null) { lat = loc.latitude; lon = loc.longitude }
             }
-        } catch (e: Exception) { /* 取れなければ前橋のまま */ }
-        fetchWeather(lat, lon)
+        } catch (e: Exception) {}
+        fetchWeather(lat, lon, showResult)
     }
 
-    private fun fetchWeather(lat: Double, lon: Double) {
+    private fun fetchWeather(lat: Double, lon: Double, showResult: Boolean) {
         thread {
             try {
                 val url = URL("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=weather_code,is_day")
@@ -304,8 +306,15 @@ class MainActivity : Activity() {
                 val isDay = Regex("\"is_day\"\\s*:\\s*(\\d+)").find(body)?.groupValues?.get(1)?.toInt() ?: 1
                 val type = weatherCodeToType(code, isDay == 1)
                 prefs.edit().putInt("weather_type", type).apply()
-                runOnUiThread { weatherView.weatherType = type }
-            } catch (e: Exception) { /* 失敗時は前回の天気のまま */ }
+                runOnUiThread {
+                    weatherView.weatherType = type
+                    if (showResult) Toast.makeText(this, "天気を更新しました", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                if (showResult) runOnUiThread {
+                    Toast.makeText(this, "天気の更新に失敗しました", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
