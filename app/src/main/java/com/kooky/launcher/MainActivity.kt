@@ -11,7 +11,6 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
@@ -39,9 +38,12 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
 
@@ -55,10 +57,15 @@ class MainActivity : Activity() {
     private lateinit var searchBar: EditText
     private lateinit var clockText: TextView
     private lateinit var dateText: TextView
+    private lateinit var weatherView: WeatherView
 
     private val gridColumns = 4
     private val topGapDp = 380
     private val appsTopPadDp = 4
+
+    // 前橋の緯度経度
+    private val lat = 36.389
+    private val lon = 139.063
 
     private var showLabels = true
     private var useDesignIcon = true
@@ -81,12 +88,18 @@ class MainActivity : Activity() {
             val ss = secFormat.format(now)
             val text = "$hm $ss"
             val sp = SpannableString(text)
-            val secStart = hm.length + 1
-            // 秒は時分の0.6倍（少し大きめに調整）
-            sp.setSpan(RelativeSizeSpan(0.6f), secStart, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            sp.setSpan(RelativeSizeSpan(0.6f), hm.length + 1, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             clockText.text = sp
             dateText.text = dateFormat.format(now)
             timeHandler.postDelayed(this, 1000)
+        }
+    }
+
+    // 天気を1時間ごとに更新
+    private val weatherTick = object : Runnable {
+        override fun run() {
+            fetchWeather()
+            timeHandler.postDelayed(this, 60 * 60 * 1000L)
         }
     }
 
@@ -101,6 +114,11 @@ class MainActivity : Activity() {
 
         NotificationService.onChange = {
             runOnUiThread { appAdapter.notifyDataSetChanged() }
+        }
+
+        // 天気イラスト
+        weatherView = WeatherView(this).apply {
+            weatherType = prefs.getInt("weather_type", 0) // 前回の天気を仮表示
         }
 
         clockText = TextView(this).apply {
@@ -123,6 +141,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(topGapDp))
+            addView(weatherView, LinearLayout.LayoutParams(dp(72), dp(72)))
             addView(clockText)
             addView(dateText)
         }
@@ -223,11 +242,47 @@ class MainActivity : Activity() {
         appAdapter.notifyDataSetChanged()
         timeHandler.removeCallbacks(tick)
         timeHandler.post(tick)
+        timeHandler.removeCallbacks(weatherTick)
+        timeHandler.post(weatherTick)
     }
 
     override fun onPause() {
         super.onPause()
         timeHandler.removeCallbacks(tick)
+        timeHandler.removeCallbacks(weatherTick)
+    }
+
+    // Open-Meteoから前橋の天気を取得（別スレッド）
+    private fun fetchWeather() {
+        thread {
+            try {
+                val url = URL("https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=weather_code,is_day")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 8000; conn.readTimeout = 8000
+                val body = conn.inputStream.bufferedReader().use { it.readText() }
+                conn.disconnect()
+                // 簡易パース（weather_code と is_day を取り出す）
+                val code = Regex("\"weather_code\"\\s*:\\s*(\\d+)").find(body)?.groupValues?.get(1)?.toInt() ?: 0
+                val isDay = Regex("\"is_day\"\\s*:\\s*(\\d+)").find(body)?.groupValues?.get(1)?.toInt() ?: 1
+                val type = weatherCodeToType(code, isDay == 1)
+                prefs.edit().putInt("weather_type", type).apply()
+                runOnUiThread { weatherView.weatherType = type }
+            } catch (e: Exception) {
+                // 失敗時は前回の天気のまま（何もしない）
+            }
+        }
+    }
+
+    // WMO weather_code → 0=はれ 1=くもり 2=あめ 3=かみなり 4=ゆき 5=はれのよる
+    private fun weatherCodeToType(code: Int, isDay: Boolean): Int {
+        return when (code) {
+            0, 1 -> if (isDay) 0 else 5           // 快晴・晴れ
+            2, 3, 45, 48 -> 1                       // くもり・霧
+            51,53,55,56,57,61,63,65,66,67,80,81,82 -> 2  // 雨・霧雨
+            71,73,75,77,85,86 -> 4                 // 雪
+            95,96,99 -> 3                          // 雷雨
+            else -> 1
+        }
     }
 
     private fun circleIcon(): Drawable {
@@ -235,12 +290,9 @@ class MainActivity : Activity() {
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            color = Color.WHITE
-            strokeWidth = dp(2).toFloat()
+            style = Paint.Style.STROKE; color = Color.WHITE; strokeWidth = dp(2).toFloat()
         }
-        val r = size / 2f - dp(2)
-        canvas.drawCircle(size / 2f, size / 2f, r, p)
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f - dp(2), p)
         return BitmapDrawable(resources, bmp)
     }
 
@@ -265,26 +317,20 @@ class MainActivity : Activity() {
 
     private fun renameApp(app: AppEntry) {
         val input = EditText(this).apply {
-            setText(displayName(app))
-            setSingleLine(true)
+            setText(displayName(app)); setSingleLine(true)
         }
         AlertDialog.Builder(this)
             .setTitle("名前を変更")
             .setView(input)
             .setPositiveButton("保存") { _, _ ->
                 val newName = input.text.toString().trim()
-                if (newName.isNotEmpty()) {
-                    prefs.edit().putString("name_" + app.packageName, newName).apply()
-                } else {
-                    prefs.edit().remove("name_" + app.packageName).apply()
-                }
-                sortApps()
-                applyFilter()
+                if (newName.isNotEmpty()) prefs.edit().putString("name_" + app.packageName, newName).apply()
+                else prefs.edit().remove("name_" + app.packageName).apply()
+                sortApps(); applyFilter()
             }
             .setNegativeButton("元に戻す") { _, _ ->
                 prefs.edit().remove("name_" + app.packageName).apply()
-                sortApps()
-                applyFilter()
+                sortApps(); applyFilter()
             }
             .setNeutralButton("キャンセル", null)
             .show()
@@ -309,50 +355,30 @@ class MainActivity : Activity() {
     }
 
     private fun openClock() {
-        val clockPackages = listOf(
-            "com.google.android.deskclock",
-            "com.sec.android.app.clockpackage"
-        )
+        val clockPackages = listOf("com.google.android.deskclock", "com.sec.android.app.clockpackage")
         for (pkg in clockPackages) {
             val intent = packageManager.getLaunchIntentForPackage(pkg)
-            if (intent != null) {
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(intent)
-                return
-            }
+            if (intent != null) { intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(intent); return }
         }
         try {
-            startActivity(Intent(Intent.ACTION_MAIN)
-                .addCategory("android.intent.category.APP_DESKCLOCK")
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            return
+            startActivity(Intent(Intent.ACTION_MAIN).addCategory("android.intent.category.APP_DESKCLOCK")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return
         } catch (e: Exception) {}
         try {
-            startActivity(Intent(AlarmClock.ACTION_SHOW_ALARMS)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            return
+            startActivity(Intent(AlarmClock.ACTION_SHOW_ALARMS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return
         } catch (e: Exception) {}
         Toast.makeText(this, "時計アプリが見つかりませんでした", Toast.LENGTH_SHORT).show()
     }
 
     private fun showClockDiagnostics() {
         val pm = packageManager
-        val intent = Intent(Intent.ACTION_MAIN, null).apply {
-            addCategory(Intent.CATEGORY_LAUNCHER)
-        }
+        val intent = Intent(Intent.ACTION_MAIN, null).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
         val all = pm.queryIntentActivities(intent, 0)
         val hits = all.map { it.activityInfo.packageName }
-            .filter {
-                it.contains("clock", true) ||
-                it.contains("deskclock", true) ||
-                it.contains("alarm", true)
-            }
+            .filter { it.contains("clock", true) || it.contains("deskclock", true) || it.contains("alarm", true) }
             .distinct()
-        val msg = if (hits.isEmpty()) {
-            "時計候補が見つかりません。一覧の時計アプリ名を教えてください"
-        } else {
-            "時計候補: " + hits.joinToString(" / ")
-        }
+        val msg = if (hits.isEmpty()) "時計候補が見つかりません。一覧の時計アプリ名を教えてください"
+        else "時計候補: " + hits.joinToString(" / ")
         Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
     }
 
@@ -360,8 +386,7 @@ class MainActivity : Activity() {
         try {
             val builder = CalendarContract.CONTENT_URI.buildUpon().appendPath("time")
             ContentUris.appendId(builder, System.currentTimeMillis())
-            startActivity(Intent(Intent.ACTION_VIEW, builder.build())
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            startActivity(Intent(Intent.ACTION_VIEW, builder.build()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (e: Exception) {
             Toast.makeText(this, "カレンダーを開けませんでした", Toast.LENGTH_SHORT).show()
         }
@@ -377,30 +402,18 @@ class MainActivity : Activity() {
     }
 
     override fun onBackPressed() {
-        if (!searchBar.text.isNullOrEmpty()) {
-            resetSearch()
-        } else {
-            super.onBackPressed()
-        }
+        if (!searchBar.text.isNullOrEmpty()) resetSearch() else super.onBackPressed()
     }
 
     private fun loadApps() {
         val pm = packageManager
-        val intent = Intent(Intent.ACTION_MAIN, null).apply {
-            addCategory(Intent.CATEGORY_LAUNCHER)
-        }
+        val intent = Intent(Intent.ACTION_MAIN, null).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
         val list: List<ResolveInfo> = pm.queryIntentActivities(intent, 0)
         apps.clear()
         for (ri in list) {
             val pkg = ri.activityInfo.packageName
             if (pkg == packageName) continue
-            apps.add(
-                AppEntry(
-                    label = ri.loadLabel(pm).toString(),
-                    packageName = pkg,
-                    icon = ri.loadIcon(pm)
-                )
-            )
+            apps.add(AppEntry(ri.loadLabel(pm).toString(), pkg, ri.loadIcon(pm)))
         }
         sortApps()
     }
@@ -414,9 +427,7 @@ class MainActivity : Activity() {
 
     private fun toHiragana(s: String): String {
         val sb = StringBuilder()
-        for (c in s) {
-            if (c in '\u30A1'..'\u30F6') sb.append(c - 0x60) else sb.append(c)
-        }
+        for (c in s) { if (c in '\u30A1'..'\u30F6') sb.append(c - 0x60) else sb.append(c) }
         return sb.toString()
     }
 
@@ -427,13 +438,10 @@ class MainActivity : Activity() {
             shown.addAll(apps)
         } else {
             val q = toHiragana(raw.lowercase())
-            val extra = readingMap.entries
-                .filter { it.key.contains(q) || q.contains(it.key) }
-                .map { it.value }
+            val extra = readingMap.entries.filter { it.key.contains(q) || q.contains(it.key) }.map { it.value }
             shown.addAll(apps.filter { app ->
                 val name = displayName(app).lowercase()
-                val nameHira = toHiragana(name)
-                nameHira.contains(q) || extra.any { name.contains(it) }
+                toHiragana(name).contains(q) || extra.any { name.contains(it) }
             })
         }
         appAdapter.notifyDataSetChanged()
@@ -446,15 +454,13 @@ class MainActivity : Activity() {
         packageManager.getLaunchIntentForPackage(pkg)?.let { startActivity(it) }
     }
 
-    private fun dp(value: Int): Int =
-        (value * resources.displayMetrics.density).toInt()
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun withBadge(base: Drawable): Drawable {
         val size = dp(56)
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
-        base.setBounds(0, 0, size, size)
-        base.draw(canvas)
+        base.setBounds(0, 0, size, size); base.draw(canvas)
         drawDot(canvas, size)
         return BitmapDrawable(resources, bmp)
     }
@@ -468,23 +474,18 @@ class MainActivity : Activity() {
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
         canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, fill)
         val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            color = Color.WHITE
-            strokeWidth = dp(2).toFloat()
+            style = Paint.Style.STROKE; color = Color.WHITE; strokeWidth = dp(2).toFloat()
         }
         canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, border)
         if (showInitial) {
             val ch = firstChar(displayName(app))
             if (ch.isNotEmpty()) {
                 val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = Color.WHITE
-                    textSize = size * 0.42f
-                    textAlign = Paint.Align.CENTER
-                    typeface = Typeface.DEFAULT
+                    color = Color.WHITE; textSize = size * 0.42f
+                    textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT
                 }
-                val cx = size / 2f
                 val cy = size / 2f - (tp.descent() + tp.ascent()) / 2f
-                canvas.drawText(ch, cx, cy, tp)
+                canvas.drawText(ch, size / 2f, cy, tp)
             }
         }
         if (withNotif) drawDot(canvas, size)
@@ -519,23 +520,17 @@ class MainActivity : Activity() {
                 setPadding(dp(4), dp(8), dp(4), dp(8))
             }
             val hasNotif = NotificationService.activePackages.contains(app.packageName)
-            val iconDrawable = if (useDesignIcon) {
-                designIcon(app, hasNotif)
-            } else {
-                if (hasNotif) withBadge(app.icon) else app.icon
-            }
+            val iconDrawable = if (useDesignIcon) designIcon(app, hasNotif)
+                else if (hasNotif) withBadge(app.icon) else app.icon
             val icon = ImageView(this@MainActivity).apply {
                 setImageDrawable(iconDrawable)
                 layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
             }
             cell.addView(icon)
-            // ラベルは常に領域を確保（名前OFFでも高さは同じ→アイコン位置が固定される）
             val label = TextView(this@MainActivity).apply {
                 text = if (showLabels) displayName(app) else ""
-                setTextColor(Color.WHITE)
-                textSize = 12f
-                gravity = Gravity.CENTER
-                maxLines = 1
+                setTextColor(Color.WHITE); textSize = 12f
+                gravity = Gravity.CENTER; maxLines = 1
                 setPadding(0, dp(4), 0, 0)
             }
             cell.addView(label)
