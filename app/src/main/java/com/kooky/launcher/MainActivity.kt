@@ -72,7 +72,7 @@ class MainActivity : Activity() {
     private val topGapDp = 380
     private val appsTopPadDp = 4
     private val sideMarginDp = 12
-    private val cellPadDp = 8
+    private val cellPadDp = 14
 
     private val releasesUrl = "https://github.com/shinichitakebuchi-netizen/kooky-launcher/releases/latest"
 
