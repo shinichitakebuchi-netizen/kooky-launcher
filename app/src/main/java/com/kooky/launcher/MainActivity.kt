@@ -163,7 +163,7 @@ class MainActivity : Activity() {
             setOnClickListener { openCalendar() }
         }
 
-        // 天気イラスト＋右に円弧ステータスを横並び
+        // 天気イラスト＋右に円弧ステータス（中身幅だけにして中央寄せ）
         val weatherRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -175,12 +175,18 @@ class MainActivity : Activity() {
 
         val topArea = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(topGapDp))
-            addView(weatherRow)
-            addView(clockText)
-            addView(dateText)
+            // weatherRowは中身ぶんの幅にして中央に置く
+            addView(weatherRow, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+            })
+            addView(clockText, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(dateText, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
 
         searchBar = EditText(this).apply {
@@ -307,7 +313,6 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(weatherTick)
     }
 
-    // WiFi/モバイルのオンオフを判定
     private fun updateConnectivity() {
         try {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -315,7 +320,7 @@ class MainActivity : Activity() {
             val wifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
             val cell = caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
             statusArc.wifiOn = wifi
-            statusArc.mobileOn = cell || wifi // 何かしら繋がっていればモバイル側も点灯（簡易）
+            statusArc.mobileOn = cell || wifi
         } catch (e: Exception) {}
     }
 
