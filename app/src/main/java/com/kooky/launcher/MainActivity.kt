@@ -90,7 +90,6 @@ class MainActivity : Activity() {
         "らいん" to "line"
     )
 
-    // バッテリー変化を受け取る
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
@@ -253,7 +252,6 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
 
-        // バッテリー線を最前面に重ねる（画面最上部）
         batteryBar = BatteryBar(this)
         val root = FrameLayout(this).apply {
             addView(content, FrameLayout.LayoutParams(
@@ -271,7 +269,6 @@ class MainActivity : Activity() {
         maybeAskLocation()
     }
 
-    // ステータスバー・ナビバーを隠す（没入モード）
     private fun hideSystemBars() {
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -612,7 +609,37 @@ class MainActivity : Activity() {
         canvas.drawCircle(cx, cy, radius, dot)
     }
 
-    // 最上部のバッテリー線（左端固定・右へ伸び、残量で縮む・先端丸）
+    inner class AppAdapter : BaseAdapter() {
+        override fun getCount(): Int = shown.size
+        override fun getItem(position: Int): Any = shown[position]
+        override fun getItemId(position: Int): Long = position.toLong()
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
+            val app = shown[position]
+            val cell = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(cellPadDp), dp(8), dp(cellPadDp), dp(8))
+            }
+            val hasNotif = NotificationService.activePackages.contains(app.packageName)
+            val iconDrawable = if (useDesignIcon) designIcon(app, hasNotif)
+                else if (hasNotif) withBadge(app.icon) else app.icon
+            val icon = ImageView(this@MainActivity).apply {
+                setImageDrawable(iconDrawable)
+                layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
+            }
+            cell.addView(icon)
+            val label = TextView(this@MainActivity).apply {
+                text = if (showLabels) displayName(app) else ""
+                setTextColor(Color.WHITE); textSize = 12f
+                gravity = Gravity.CENTER; maxLines = 1
+                setPadding(0, dp(4), 0, 0)
+            }
+            cell.addView(label)
+            return cell
+        }
+    }
+
     inner class BatteryBar(context: Context) : View(context) {
         var ratio: Float = 1f
             set(value) { field = value.coerceIn(0f, 1f); invalidate() }
