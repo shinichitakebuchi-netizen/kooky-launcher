@@ -1,0 +1,75 @@
+name: Make app icon
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  icon:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Pillow
+        run: pip install pillow
+
+      - name: Generate launcher icons
+        run: |
+          python - <<'PY'
+          from PIL import Image, ImageDraw
+          import os
+
+          # 各解像度（mipmap密度）
+          sizes = {
+              "mipmap-mdpi": 48,
+              "mipmap-hdpi": 72,
+              "mipmap-xhdpi": 96,
+              "mipmap-xxhdpi": 144,
+              "mipmap-xxxhdpi": 192,
+          }
+
+          def make(px):
+              # 4倍で描いて縮小＝アンチエイリアス
+              S = px * 4
+              img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+              d = ImageDraw.Draw(img)
+              m = int(S * 0.07)          # 外側の余白
+              rad = int(S * 0.18)        # 角丸
+              stroke = max(2, int(S * 0.04))  # 白枠の太さ
+              # 黒地・白枠の角丸□
+              d.rounded_rectangle([m, m, S - m, S - m], radius=rad,
+                                  fill=(0, 0, 0, 255),
+                                  outline=(255, 255, 255, 255), width=stroke)
+              # 右上バッジ：白フチ＋オレンジ
+              cx, cy = int(S * 0.78), int(S * 0.22)
+              r = int(S * 0.14)
+              d.ellipse([cx - r - stroke, cy - r - stroke, cx + r + stroke, cy + r + stroke],
+                        fill=(255, 255, 255, 255))                 # 白フチ
+              d.ellipse([cx - r, cy - r, cx + r, cy + r],
+                        fill=(255, 140, 0, 255))                   # オレンジ #FF8C00
+              return img.resize((px, px), Image.LANCZOS)
+
+          for folder, px in sizes.items():
+              outdir = os.path.join("app", "src", "main", "res", folder)
+              os.makedirs(outdir, exist_ok=True)
+              icon = make(px)
+              icon.save(os.path.join(outdir, "ic_launcher.png"))
+              icon.save(os.path.join(outdir, "ic_launcher_round.png"))
+          print("icons generated")
+          PY
+
+      - name: Commit icons
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add app/src/main/res/mipmap-*/ic_launcher*.png
+          git commit -m "Add launcher icons" || echo "nothing to commit"
+          git push
