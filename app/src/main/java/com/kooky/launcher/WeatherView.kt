@@ -16,6 +16,9 @@ class WeatherView(context: Context) : View(context) {
     var weatherType: Int = 0
         set(value) { field = value; invalidate() }
 
+    private val orange = Color.parseColor("#FF8C00")
+    private val blue = Color.parseColor("#4AA3FF")
+
     private var t = 0f
     private val white = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
     private val soft = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#CCCCCC") }
@@ -31,7 +34,7 @@ class WeatherView(context: Context) : View(context) {
         override fun run() {
             t += 0.05f
             invalidate()
-            postDelayed(this, 33) // 約30fps
+            postDelayed(this, 33)
         }
     }
 
@@ -63,9 +66,13 @@ class WeatherView(context: Context) : View(context) {
 
     private fun drawSun(canvas: Canvas, cx: Float, cy: Float, u: Float) {
         val r = u * 0.16f
-        white.shader = RadialGradient(cx, cy, r, Color.WHITE, Color.parseColor("#AAAAAA"), Shader.TileMode.CLAMP)
-        canvas.drawCircle(cx, cy, r, white)
-        white.shader = null
+        // 太陽本体＝オレンジ（中心を明るく）
+        val body = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = RadialGradient(cx, cy, r, Color.parseColor("#FFB84D"), orange, Shader.TileMode.CLAMP)
+        }
+        canvas.drawCircle(cx, cy, r, body)
+        // 光条＝白
+        stroke.color = Color.WHITE
         stroke.strokeWidth = u * 0.03f
         val breathe = (Math.sin(t.toDouble()) * u * 0.02f).toFloat()
         val inner = r + u * 0.06f + breathe
@@ -101,23 +108,22 @@ class WeatherView(context: Context) : View(context) {
     private fun drawRain(canvas: Canvas, cx: Float, cy: Float, u: Float) {
         val s = u * 0.2f
         val cloudY = cy - u * 0.14f
-        canvas.drawPath(cloudPath(cx, cloudY, s), white)
-        // 雨粒の初期化（雲の下の帯にランダム配置）
+        canvas.drawPath(cloudPath(cx, cloudY, s), white) // 雲＝白
         if (drops.isEmpty()) {
             for (i in 0 until 6) {
                 drops.add(Particle(
                     cx - u * 0.28f + Math.random().toFloat() * u * 0.56f,
-                    cloudY + u * 0.15f + Math.random().toFloat() * u * 0.5f,
-                    0f))
+                    cloudY + u * 0.15f + Math.random().toFloat() * u * 0.5f, 0f))
             }
         }
-        stroke.strokeWidth = u * 0.022f
-        val bottom = cloudY + u * 0.7f // 降る下限
+        // 雨粒＝青
+        stroke.color = blue
+        stroke.strokeWidth = u * 0.024f
+        val bottom = cloudY + u * 0.7f
         for (d in drops) {
             canvas.drawLine(d.x, d.y, d.x - u * 0.02f, d.y + u * 0.09f, stroke)
             d.y += u * 0.035f
             if (d.y > bottom) {
-                // 雲の真下の帯に確実に戻す（横位置もランダムでリセット）
                 d.y = cloudY + u * 0.12f
                 d.x = cx - u * 0.28f + Math.random().toFloat() * u * 0.56f
             }
@@ -126,9 +132,11 @@ class WeatherView(context: Context) : View(context) {
 
     private fun drawThunder(canvas: Canvas, cx: Float, cy: Float, u: Float) {
         val s = u * 0.2f
-        canvas.drawPath(cloudPath(cx, cy - u * 0.16f, s), white)
+        canvas.drawPath(cloudPath(cx, cy - u * 0.16f, s), white) // 雲＝白
         val flash = Math.sin(t * 2.0) > -0.3
         if (flash) {
+            // 稲妻＝オレンジ
+            val bolt = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = orange }
             val p = Path()
             p.moveTo(cx + u*0.04f, cy + u*0.02f)
             p.lineTo(cx - u*0.06f, cy + u*0.18f)
@@ -137,14 +145,14 @@ class WeatherView(context: Context) : View(context) {
             p.lineTo(cx + u*0.12f, cy + u*0.12f)
             p.lineTo(cx + u*0.03f, cy + u*0.12f)
             p.close()
-            canvas.drawPath(p, white)
+            canvas.drawPath(p, bolt)
         }
     }
 
     private fun drawSnow(canvas: Canvas, cx: Float, cy: Float, u: Float) {
         val s = u * 0.2f
         val cloudY = cy - u * 0.14f
-        canvas.drawPath(cloudPath(cx, cloudY, s), white)
+        canvas.drawPath(cloudPath(cx, cloudY, s), white) // 雲＝白
         if (flakes.isEmpty()) {
             for (i in 0 until 6) {
                 flakes.add(Particle(
@@ -153,6 +161,7 @@ class WeatherView(context: Context) : View(context) {
                     Math.random().toFloat() * 6f))
             }
         }
+        // 雪＝白
         val bottom = cloudY + u * 0.72f
         for (f in flakes) {
             canvas.drawCircle(f.x, f.y, u * 0.022f, white)
@@ -168,13 +177,16 @@ class WeatherView(context: Context) : View(context) {
 
     private fun drawNight(canvas: Canvas, cx: Float, cy: Float, u: Float) {
         val r = u * 0.2f
+        // 三日月＝オレンジ
+        val moon = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = orange }
         val save = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
-        canvas.drawCircle(cx - u*0.03f, cy, r, white)
+        canvas.drawCircle(cx - u*0.03f, cy, r, moon)
         val cut = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
         }
         canvas.drawCircle(cx + u*0.08f, cy - u*0.05f, r * 0.95f, cut)
         canvas.restoreToCount(save)
+        // 星＝白
         val stars = arrayOf(floatArrayOf(-0.28f,-0.28f), floatArrayOf(0.3f,-0.18f), floatArrayOf(-0.2f,0.28f), floatArrayOf(0.28f,0.26f))
         for ((i, st) in stars.withIndex()) {
             val tw = (Math.sin(t * 1.5 + i) * 0.5 + 0.5).toFloat()
