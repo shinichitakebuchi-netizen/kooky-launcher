@@ -20,6 +20,8 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Bundle
@@ -40,7 +42,6 @@ import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.BaseAdapter
 import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.GridView
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -66,7 +67,7 @@ class MainActivity : Activity() {
     private lateinit var clockText: TextView
     private lateinit var dateText: TextView
     private lateinit var weatherView: WeatherView
-    private lateinit var batteryBar: BatteryBar
+    private lateinit var statusArc: StatusArcView
 
     private val gridColumns = 4
     private val topGapDp = 380
@@ -94,9 +95,8 @@ class MainActivity : Activity() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
             val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
-            if (level >= 0 && scale > 0) {
-                batteryBar.ratio = level.toFloat() / scale.toFloat()
-            }
+            if (level >= 0 && scale > 0) statusArc.ratio = level.toFloat() / scale.toFloat()
+            updateConnectivity()
         }
     }
 
@@ -145,6 +145,7 @@ class MainActivity : Activity() {
                 updateWeatherAtCurrentLocation(true)
             }
         }
+        statusArc = StatusArcView(this)
 
         clockText = TextView(this).apply {
             textSize = 46f
@@ -161,12 +162,23 @@ class MainActivity : Activity() {
             setPadding(0, dp(4), 0, 0)
             setOnClickListener { openCalendar() }
         }
+
+        // 天気イラスト＋右に円弧ステータスを横並び
+        val weatherRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(weatherView, LinearLayout.LayoutParams(dp(72), dp(72)))
+            addView(statusArc, LinearLayout.LayoutParams(dp(30), dp(30)).apply {
+                leftMargin = dp(10)
+            })
+        }
+
         val topArea = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(topGapDp))
-            addView(weatherView, LinearLayout.LayoutParams(dp(72), dp(72)))
+            addView(weatherRow)
             addView(clockText)
             addView(dateText)
         }
@@ -252,17 +264,7 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
 
-        batteryBar = BatteryBar(this)
-        val root = FrameLayout(this).apply {
-            addView(content, FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            addView(batteryBar, FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(2)).apply {
-                gravity = Gravity.TOP
-            })
-        }
-
-        setContentView(root)
+        setContentView(content)
 
         applyFilter()
         maybeAskNotificationAccess()
@@ -287,6 +289,7 @@ class MainActivity : Activity() {
         super.onResume()
         hideSystemBars()
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        updateConnectivity()
         sortApps()
         applyFilter()
         resetSearch()
@@ -302,6 +305,18 @@ class MainActivity : Activity() {
         try { unregisterReceiver(batteryReceiver) } catch (e: Exception) {}
         timeHandler.removeCallbacks(tick)
         timeHandler.removeCallbacks(weatherTick)
+    }
+
+    // WiFi/モバイルのオンオフを判定
+    private fun updateConnectivity() {
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+            val wifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+            val cell = caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
+            statusArc.wifiOn = wifi
+            statusArc.mobileOn = cell || wifi // 何かしら繋がっていればモバイル側も点灯（簡易）
+        } catch (e: Exception) {}
     }
 
     private fun maybeAskLocation() {
@@ -637,25 +652,6 @@ class MainActivity : Activity() {
             }
             cell.addView(label)
             return cell
-        }
-    }
-
-    inner class BatteryBar(context: Context) : View(context) {
-        var ratio: Float = 1f
-            set(value) { field = value.coerceIn(0f, 1f); invalidate() }
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#FF8C00")
-            strokeCap = Paint.Cap.ROUND
-            style = Paint.Style.STROKE
-        }
-        override fun onDraw(canvas: Canvas) {
-            val h = height.toFloat()
-            paint.strokeWidth = h
-            val cap = h / 2f
-            val startX = cap
-            val fullW = width.toFloat() - cap * 2
-            val endX = startX + fullW * ratio
-            if (endX > startX) canvas.drawLine(startX, h / 2f, endX, h / 2f, paint)
         }
     }
 }
