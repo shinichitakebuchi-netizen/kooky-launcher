@@ -70,7 +70,8 @@ class MainActivity : Activity() {
     private lateinit var statusArc: StatusArcView
 
     private val gridColumns = 4
-    private val topGapDp = 290
+    private val topGapDp = 290          // 天気・時計エリアの高さ（この位置が理想）
+    private val searchTopGapDp = 90     // 検索バーの上に足す余白（アプリを下げる）
     private val appsTopPadDp = 4
     private val sideMarginDp = 12
     private val cellPadDp = 14
@@ -163,7 +164,6 @@ class MainActivity : Activity() {
             setOnClickListener { openCalendar() }
         }
 
-        // 天気イラスト＋右に円弧ステータス（中身幅だけにして中央寄せ）
         val weatherRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -178,7 +178,6 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(topGapDp))
-            // weatherRowは中身ぶんの幅にして中央に置く
             addView(weatherRow, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
@@ -262,9 +261,10 @@ class MainActivity : Activity() {
             isFocusableInTouchMode = true
             addView(topArea)
             val barMargin = dp(sideMarginDp + cellPadDp)
+            // 検索バーの上に余白（searchTopGapDp）を足して、アプリを下げる
             addView(searchBarRow, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(barMargin, 0, barMargin, dp(8))
+                setMargins(barMargin, dp(searchTopGapDp), barMargin, dp(8))
             })
             addView(grid, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
