@@ -70,7 +70,7 @@ class MainActivity : Activity() {
     private lateinit var statusArc: StatusArcView
 
     private val gridColumns = 4
-    private val topGapDp = 380
+    private val topGapDp = 290
     private val appsTopPadDp = 4
     private val sideMarginDp = 12
     private val cellPadDp = 14
