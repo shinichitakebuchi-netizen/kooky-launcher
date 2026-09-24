@@ -70,11 +70,11 @@ class MainActivity : Activity() {
     private lateinit var statusArc: StatusArcView
 
     private val gridColumns = 4
-    private val topGapDp = 290          // 天気・時計エリアの高さ（この位置が理想）
-    private val searchTopGapDp = 90     // 検索バーの上に足す余白（アプリを下げる）
     private val appsTopPadDp = 4
     private val sideMarginDp = 12
     private val cellPadDp = 14
+    // アプリを何行ぶん表示する高さにするか（下ブロックの高さの目安）
+    private val gridHeightDp = 420
 
     private val releasesUrl = "https://github.com/shinichitakebuchi-netizen/kooky-launcher/releases/latest"
 
@@ -173,11 +173,10 @@ class MainActivity : Activity() {
             })
         }
 
+        // 上ブロック：空いたスペースを全部使い、その中で「上下中央」に天気・時計を置く
         val topArea = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(topGapDp))
+            gravity = Gravity.CENTER   // ← 空白の中央に配置
             addView(weatherRow, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
@@ -259,15 +258,17 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.BLACK)
             isFocusable = true
             isFocusableInTouchMode = true
-            addView(topArea)
+            // 上ブロックが余白を全部使う（weight=1）→天気・時計が空白の中央に来る
+            addView(topArea, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             val barMargin = dp(sideMarginDp + cellPadDp)
-            // 検索バーの上に余白（searchTopGapDp）を足して、アプリを下げる
             addView(searchBarRow, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(barMargin, dp(searchTopGapDp), barMargin, dp(8))
+                setMargins(barMargin, 0, barMargin, dp(8))
             })
+            // アプリは下側に固定の高さで置く
             addView(grid, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(gridHeightDp)))
         }
 
         setContentView(content)
