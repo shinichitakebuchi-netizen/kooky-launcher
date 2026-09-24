@@ -3,9 +3,11 @@ package com.kooky.launcher
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.BroadcastReceiver
 import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
@@ -19,6 +21,7 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.location.LocationManager
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -37,6 +40,7 @@ import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.BaseAdapter
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.GridView
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -62,14 +66,14 @@ class MainActivity : Activity() {
     private lateinit var clockText: TextView
     private lateinit var dateText: TextView
     private lateinit var weatherView: WeatherView
+    private lateinit var batteryBar: BatteryBar
 
     private val gridColumns = 4
     private val topGapDp = 380
     private val appsTopPadDp = 4
     private val sideMarginDp = 12
-    private val cellPadDp = 14
+    private val cellPadDp = 8
 
-    // 更新ページ（Releasesの最新）
     private val releasesUrl = "https://github.com/shinichitakebuchi-netizen/kooky-launcher/releases/latest"
 
     private val fallbackLat = 36.389
@@ -85,6 +89,17 @@ class MainActivity : Activity() {
         "ぺいぺい" to "paypay",
         "らいん" to "line"
     )
+
+    // バッテリー変化を受け取る
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            if (level >= 0 && scale > 0) {
+                batteryBar.ratio = level.toFloat() / scale.toFloat()
+            }
+        }
+    }
 
     private val timeHandler = Handler(Looper.getMainLooper())
     private val hmFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -238,15 +253,43 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
 
-        setContentView(content)
+        // バッテリー線を最前面に重ねる（画面最上部）
+        batteryBar = BatteryBar(this)
+        val root = FrameLayout(this).apply {
+            addView(content, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(batteryBar, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(2)).apply {
+                gravity = Gravity.TOP
+            })
+        }
+
+        setContentView(root)
 
         applyFilter()
         maybeAskNotificationAccess()
         maybeAskLocation()
     }
 
+    // ステータスバー・ナビバーを隠す（没入モード）
+    private fun hideSystemBars() {
+        window.decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            or View.SYSTEM_UI_FLAG_FULLSCREEN
+            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        )
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideSystemBars()
+    }
+
     override fun onResume() {
         super.onResume()
+        hideSystemBars()
+        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         sortApps()
         applyFilter()
         resetSearch()
@@ -259,6 +302,7 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         super.onPause()
+        try { unregisterReceiver(batteryReceiver) } catch (e: Exception) {}
         timeHandler.removeCallbacks(tick)
         timeHandler.removeCallbacks(weatherTick)
     }
@@ -343,7 +387,6 @@ class MainActivity : Activity() {
         return BitmapDrawable(resources, bmp)
     }
 
-    // 設定メニュー：【NAME】【ICON】【INITIAL】は ■/□ トグル、【UPDATE】はアクション
     private fun showSettingsMenu() {
         fun box(on: Boolean) = if (on) "■" else "□"
         fun buildItems() = arrayOf(
@@ -352,25 +395,22 @@ class MainActivity : Activity() {
             "【INITIAL】  ${box(showInitial)}",
             "【UPDATE】"
         )
-        lateinit var dialog: AlertDialog
-        val builder = AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setTitle("設定")
             .setItems(buildItems()) { d, which ->
                 when (which) {
                     0 -> { showLabels = !showLabels; prefs.edit().putBoolean("show_labels", showLabels).apply() }
                     1 -> { useDesignIcon = !useDesignIcon; prefs.edit().putBoolean("use_design_icon", useDesignIcon).apply() }
                     2 -> { showInitial = !showInitial; prefs.edit().putBoolean("show_initial", showInitial).apply() }
-                    3 -> { openUpdatePage(); return@setItems } // UPDATEはページを開いて終了
+                    3 -> { openUpdatePage(); return@setItems }
                 }
                 appAdapter.notifyDataSetChanged()
                 d.dismiss()
-                showSettingsMenu() // ■/□の表示を更新して開き直す（連続設定しやすく）
+                showSettingsMenu()
             }
-        dialog = builder.create()
-        dialog.show()
+            .show()
     }
 
-    // 最新版（Releases）をブラウザで開く
     private fun openUpdatePage() {
         try {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(releasesUrl))
@@ -572,34 +612,23 @@ class MainActivity : Activity() {
         canvas.drawCircle(cx, cy, radius, dot)
     }
 
-    inner class AppAdapter : BaseAdapter() {
-        override fun getCount(): Int = shown.size
-        override fun getItem(position: Int): Any = shown[position]
-        override fun getItemId(position: Int): Long = position.toLong()
-
-        override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View {
-            val app = shown[position]
-            val cell = LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(dp(cellPadDp), dp(8), dp(cellPadDp), dp(8))
-            }
-            val hasNotif = NotificationService.activePackages.contains(app.packageName)
-            val iconDrawable = if (useDesignIcon) designIcon(app, hasNotif)
-                else if (hasNotif) withBadge(app.icon) else app.icon
-            val icon = ImageView(this@MainActivity).apply {
-                setImageDrawable(iconDrawable)
-                layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
-            }
-            cell.addView(icon)
-            val label = TextView(this@MainActivity).apply {
-                text = if (showLabels) displayName(app) else ""
-                setTextColor(Color.WHITE); textSize = 12f
-                gravity = Gravity.CENTER; maxLines = 1
-                setPadding(0, dp(4), 0, 0)
-            }
-            cell.addView(label)
-            return cell
+    // 最上部のバッテリー線（左端固定・右へ伸び、残量で縮む・先端丸）
+    inner class BatteryBar(context: Context) : View(context) {
+        var ratio: Float = 1f
+            set(value) { field = value.coerceIn(0f, 1f); invalidate() }
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#FF8C00")
+            strokeCap = Paint.Cap.ROUND
+            style = Paint.Style.STROKE
+        }
+        override fun onDraw(canvas: Canvas) {
+            val h = height.toFloat()
+            paint.strokeWidth = h
+            val cap = h / 2f
+            val startX = cap
+            val fullW = width.toFloat() - cap * 2
+            val endX = startX + fullW * ratio
+            if (endX > startX) canvas.drawLine(startX, h / 2f, endX, h / 2f, paint)
         }
     }
 }
