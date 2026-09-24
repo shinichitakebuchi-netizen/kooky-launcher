@@ -262,12 +262,10 @@ class MainActivity : Activity() {
             val barMargin = dp(sideMarginDp + cellPadDp)
             addView(searchBarRow, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(barMargin, 0, barMargin, dp(8))
+                setMargins(barMargin, dp(bottomGapDp), barMargin, dp(8))   // 検索バーの上に余白＝全体が下がる
             })
             addView(grid, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(gridHeightDp)).apply {
-                bottomMargin = dp(bottomGapDp)   // 全体を1列ぶん下げる
-            })
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(gridHeightDp)))
         }
 
         setContentView(content)
