@@ -18,6 +18,7 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.location.LocationManager
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -65,10 +66,11 @@ class MainActivity : Activity() {
     private val gridColumns = 4
     private val topGapDp = 380
     private val appsTopPadDp = 4
-    // グリッドの外側余白
     private val sideMarginDp = 12
-    // 各アプリセルの内側余白（getViewのsetPadding左右と合わせる）
-    private val cellPadDp = 12
+    private val cellPadDp = 14
+
+    // 更新ページ（Releasesの最新）
+    private val releasesUrl = "https://github.com/shinichitakebuchi-netizen/kooky-launcher/releases/latest"
 
     private val fallbackLat = 36.389
     private val fallbackLon = 139.063
@@ -227,7 +229,6 @@ class MainActivity : Activity() {
             isFocusable = true
             isFocusableInTouchMode = true
             addView(topArea)
-            // バーの左右端を、アイコン枠の位置（グリッド余白＋セル内側余白）に合わせる
             val barMargin = dp(sideMarginDp + cellPadDp)
             addView(searchBarRow, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -342,23 +343,41 @@ class MainActivity : Activity() {
         return BitmapDrawable(resources, bmp)
     }
 
+    // 設定メニュー：【NAME】【ICON】【INITIAL】は ■/□ トグル、【UPDATE】はアクション
     private fun showSettingsMenu() {
-        val items = arrayOf(
-            if (showLabels) "アプリ名: 表示 → 非表示にする" else "アプリ名: 非表示 → 表示にする",
-            if (useDesignIcon) "アイコン: デザイン → 元に戻す" else "アイコン: 元 → デザインにする",
-            if (showInitial) "記号: 頭文字(Y) → 記号なし(X)" else "記号: 記号なし(X) → 頭文字(Y)"
+        fun box(on: Boolean) = if (on) "■" else "□"
+        fun buildItems() = arrayOf(
+            "【NAME】     ${box(showLabels)}",
+            "【ICON】      ${box(useDesignIcon)}",
+            "【INITIAL】  ${box(showInitial)}",
+            "【UPDATE】"
         )
-        AlertDialog.Builder(this)
+        lateinit var dialog: AlertDialog
+        val builder = AlertDialog.Builder(this)
             .setTitle("設定")
-            .setItems(items) { _, which ->
+            .setItems(buildItems()) { d, which ->
                 when (which) {
                     0 -> { showLabels = !showLabels; prefs.edit().putBoolean("show_labels", showLabels).apply() }
                     1 -> { useDesignIcon = !useDesignIcon; prefs.edit().putBoolean("use_design_icon", useDesignIcon).apply() }
                     2 -> { showInitial = !showInitial; prefs.edit().putBoolean("show_initial", showInitial).apply() }
+                    3 -> { openUpdatePage(); return@setItems } // UPDATEはページを開いて終了
                 }
                 appAdapter.notifyDataSetChanged()
+                d.dismiss()
+                showSettingsMenu() // ■/□の表示を更新して開き直す（連続設定しやすく）
             }
-            .show()
+        dialog = builder.create()
+        dialog.show()
+    }
+
+    // 最新版（Releases）をブラウザで開く
+    private fun openUpdatePage() {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(releasesUrl))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            Toast.makeText(this, "更新ページを開けませんでした", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun renameApp(app: AppEntry) {
