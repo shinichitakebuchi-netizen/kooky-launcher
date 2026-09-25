@@ -21,7 +21,9 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.location.LocationManager
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Bundle
@@ -73,10 +75,8 @@ class MainActivity : Activity() {
     private val appsTopPadDp = 4
     private val sideMarginDp = 12
     private val cellPadDp = 14
-    // アプリの表示行数（3行）
     private val gridRows = 3
-    // アプリ1マスの高さ（アイコン56＋ラベル＋余白）の目安
-    private val cellHeightDp = 96
+    private val cellHeightDp = 108
 
     private val releasesUrl = "https://github.com/shinichitakebuchi-netizen/kooky-launcher/releases/latest"
 
@@ -94,12 +94,13 @@ class MainActivity : Activity() {
         "らいん" to "line"
     )
 
+    private var netCallback: ConnectivityManager.NetworkCallback? = null
+
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
             val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
             if (level >= 0 && scale > 0) statusArc.ratio = level.toFloat() / scale.toFloat()
-            updateConnectivity()
         }
     }
 
@@ -166,18 +167,16 @@ class MainActivity : Activity() {
             setOnClickListener { openCalendar() }
         }
 
-        // 天気＋インジケーターを下端揃えで横並び
         val weatherRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.BOTTOM   // ← 下端揃え
+            gravity = Gravity.BOTTOM
             addView(weatherView, LinearLayout.LayoutParams(dp(72), dp(72)))
             addView(statusArc, LinearLayout.LayoutParams(dp(36), dp(36)).apply {
                 leftMargin = dp(10)
-                bottomMargin = dp(4)   // 下端の微調整
+                bottomMargin = dp(4)
             })
         }
 
-        // 上ブロック：空白の中央に〔天気＋インジケーター→時計→日付〕
         val topArea = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -263,7 +262,6 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.BLACK)
             isFocusable = true
             isFocusableInTouchMode = true
-            // 上ブロックが余白を全部使う → 天気・時計が空白の中央
             addView(topArea, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             val barMargin = dp(sideMarginDp + cellPadDp)
@@ -271,7 +269,6 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 setMargins(barMargin, 0, barMargin, dp(8))
             })
-            // アプリは3行ぶんの固定高さ
             addView(grid, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(gridRows * cellHeightDp)))
         }
@@ -301,6 +298,7 @@ class MainActivity : Activity() {
         super.onResume()
         hideSystemBars()
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        registerNetworkCallback()
         updateConnectivity()
         sortApps()
         applyFilter()
@@ -315,10 +313,36 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         try { unregisterReceiver(batteryReceiver) } catch (e: Exception) {}
+        unregisterNetworkCallback()
         timeHandler.removeCallbacks(tick)
         timeHandler.removeCallbacks(weatherTick)
     }
 
+    // ネットワーク変化を常時監視（WiFi切替を即反映）
+    private fun registerNetworkCallback() {
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val cb = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) { runOnUiThread { updateConnectivity() } }
+                override fun onLost(network: Network) { runOnUiThread { updateConnectivity() } }
+                override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                    runOnUiThread { updateConnectivity() }
+                }
+            }
+            cm.registerNetworkCallback(NetworkRequest.Builder().build(), cb)
+            netCallback = cb
+        } catch (e: Exception) {}
+    }
+
+    private fun unregisterNetworkCallback() {
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            netCallback?.let { cm.unregisterNetworkCallback(it) }
+            netCallback = null
+        } catch (e: Exception) {}
+    }
+
+    // 今アクティブな回線がWiFiかモバイルかを判定
     private fun updateConnectivity() {
         try {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -326,7 +350,7 @@ class MainActivity : Activity() {
             val wifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
             val cell = caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
             statusArc.wifiOn = wifi
-            statusArc.mobileOn = cell || wifi
+            statusArc.mobileOn = cell
         } catch (e: Exception) {}
     }
 
