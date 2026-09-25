@@ -22,38 +22,40 @@ class StatusArcView(context: Context) : View(context) {
     private val dot = Paint(Paint.ANTI_ALIAS_FLAG)
 
     override fun onDraw(canvas: Canvas) {
-        val w = width.toFloat(); val h = height.toFloat()
-        val cx = w / 2f; val cy = h / 2f
-        val u = minOf(w, h)
+        val cx = width / 2f
+        val cy = height / 2f
+        val u = minOf(width, height).toFloat()
         val r = u * 0.40f
+
         val start = 135f; val sweep = 270f
-
-        // バッテリー背景の弧（薄い白）
-        arc.strokeWidth = u * 0.09f
-        arc.color = Color.parseColor("#33FFFFFF")
+        // バッテリー円弧を細く（0.09 → 0.05）
+        arc.strokeWidth = u * 0.05f
         val rect = RectF(cx - r, cy - r, cx + r, cy + r)
-        canvas.drawArc(rect, start, sweep, false, arc)
 
-        // バッテリー残量の弧：普段オレンジ、20%以下で白
+        // バッテリー背景弧（薄い白）
+        arc.color = Color.parseColor("#33FFFFFF")
+        canvas.drawArc(rect, start, sweep, false, arc)
+        // バッテリー残量弧：普段オレンジ、20%以下で白
         arc.color = if (ratio <= 0.2f) Color.WHITE else orange
         canvas.drawArc(rect, start, sweep * ratio, false, arc)
 
-        // 中央WiFi（弧3本＋点）
-        val wc = if (wifiOn) Color.WHITE else Color.parseColor("#40FFFFFF")
+        // 中央WiFi（弧3本＋点）：接続=オレンジ / 非接続=白
+        val wc = if (wifiOn) orange else Color.WHITE
         line.color = wc; line.strokeWidth = u * 0.035f
         dot.color = wc
-        val wcy = cy + u * 0.05f
+        val apexY = cy + u * 0.10f
         for (i in 1..3) {
-            val rr = u * 0.075f * i
-            val wr = RectF(cx - rr, wcy - rr, cx + rr, wcy + rr)
+            val rr = u * 0.085f * i
+            val wr = RectF(cx - rr, apexY - rr, cx + rr, apexY + rr)
             canvas.drawArc(wr, 225f, 90f, false, line)
         }
-        canvas.drawCircle(cx, wcy, u * 0.016f, dot)
+        canvas.drawCircle(cx, apexY, u * 0.018f, dot)
 
-        // 下モバイル（3ドット）
-        dot.color = if (mobileOn) Color.WHITE else Color.parseColor("#40FFFFFF")
+        // 下モバイル（3ドット）：接続=オレンジ / 非接続=白
+        dot.color = if (mobileOn) orange else Color.WHITE
+        val my = cy + u * 0.26f
         for (k in -1..1) {
-            canvas.drawCircle(cx + k * u * 0.10f, cy + u * 0.24f, u * 0.022f, dot)
+            canvas.drawCircle(cx + k * u * 0.11f, my, u * 0.022f, dot)
         }
     }
 }
