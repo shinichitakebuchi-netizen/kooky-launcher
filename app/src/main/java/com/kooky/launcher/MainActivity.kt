@@ -149,7 +149,10 @@ class MainActivity : Activity() {
                 updateWeatherAtCurrentLocation(true)
             }
         }
-        statusArc = StatusArcView(this)
+        statusArc = StatusArcView(this).apply {
+            // 診断：長押しで今の判定結果を表示
+            setOnLongClickListener { showNetDiagnostics(); true }
+        }
 
         clockText = TextView(this).apply {
             textSize = 46f
@@ -318,7 +321,6 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(weatherTick)
     }
 
-    // ネットワーク変化を常時監視（WiFi切替を即反映）
     private fun registerNetworkCallback() {
         try {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -342,16 +344,33 @@ class MainActivity : Activity() {
         } catch (e: Exception) {}
     }
 
-    // 今アクティブな回線がWiFiかモバイルかを判定
-    private fun updateConnectivity() {
+    // 全ネットワークを走査して、WiFi/モバイルが「実際に使える状態か」を個別に判定
+    private fun readNet(): Pair<Boolean, Boolean> {
+        var wifi = false
+        var mobile = false
         try {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val caps = cm.getNetworkCapabilities(cm.activeNetwork)
-            val wifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-            val cell = caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
-            statusArc.wifiOn = wifi
-            statusArc.mobileOn = cell
+            for (n in cm.allNetworks) {
+                val caps = cm.getNetworkCapabilities(n) ?: continue
+                val validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                if (!validated) continue  // インターネットに実際に出られる回線だけ見る
+                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) wifi = true
+                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) mobile = true
+            }
         } catch (e: Exception) {}
+        return Pair(wifi, mobile)
+    }
+
+    private fun updateConnectivity() {
+        val (wifi, mobile) = readNet()
+        statusArc.wifiOn = wifi
+        statusArc.mobileOn = mobile
+    }
+
+    // 診断：今の判定を画面に出す
+    private fun showNetDiagnostics() {
+        val (wifi, mobile) = readNet()
+        Toast.makeText(this, "WiFi=$wifi / モバイル=$mobile", Toast.LENGTH_LONG).show()
     }
 
     private fun maybeAskLocation() {
