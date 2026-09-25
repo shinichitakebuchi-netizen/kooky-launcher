@@ -346,16 +346,20 @@ class MainActivity : Activity() {
         } catch (e: Exception) {}
     }
 
-    // 今アクティブな回線を見てWiFi/モバイルを判定
+      // 旧APIで判定（非推奨だが確実に動くことが多い）
     private fun readNet(): Pair<Boolean, Boolean> {
         var wifi = false
         var mobile = false
         try {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val caps = cm.getNetworkCapabilities(cm.activeNetwork)
-            if (caps != null) {
-                wifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
-                mobile = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+            @Suppress("DEPRECATION")
+            val info = cm.activeNetworkInfo
+            @Suppress("DEPRECATION")
+            if (info != null && info.isConnected) {
+                when (info.type) {
+                    ConnectivityManager.TYPE_WIFI -> wifi = true
+                    ConnectivityManager.TYPE_MOBILE -> mobile = true
+                }
             }
         } catch (e: Exception) {}
         return Pair(wifi, mobile)
