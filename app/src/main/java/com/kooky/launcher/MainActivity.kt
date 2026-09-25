@@ -344,7 +344,7 @@ class MainActivity : Activity() {
         } catch (e: Exception) {}
     }
 
-    // 全ネットワークを走査して、WiFi/モバイルが「実際に使える状態か」を個別に判定
+ // WiFi/モバイルに接続しているかを素直に判定（疎通確認はしない）
     private fun readNet(): Pair<Boolean, Boolean> {
         var wifi = false
         var mobile = false
@@ -352,8 +352,7 @@ class MainActivity : Activity() {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             for (n in cm.allNetworks) {
                 val caps = cm.getNetworkCapabilities(n) ?: continue
-                val validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-                if (!validated) continue  // インターネットに実際に出られる回線だけ見る
+                if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) continue
                 if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) wifi = true
                 if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) mobile = true
             }
