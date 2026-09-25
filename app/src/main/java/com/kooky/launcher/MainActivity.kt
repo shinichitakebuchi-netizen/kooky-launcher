@@ -74,7 +74,6 @@ class MainActivity : Activity() {
     private val sideMarginDp = 12
     private val cellPadDp = 14
     private val gridHeightDp = 420
-    private val bottomGapDp = 90   // 全体を下げる余白（1列ぶん）
 
     private val releasesUrl = "https://github.com/shinichitakebuchi-netizen/kooky-launcher/releases/latest"
 
@@ -262,7 +261,7 @@ class MainActivity : Activity() {
             val barMargin = dp(sideMarginDp + cellPadDp)
             addView(searchBarRow, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(barMargin, dp(bottomGapDp), barMargin, dp(8))   // 検索バーの上に余白＝全体が下がる
+                setMargins(barMargin, 0, barMargin, dp(8))
             })
             addView(grid, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(gridHeightDp)))
