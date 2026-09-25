@@ -150,7 +150,9 @@ class MainActivity : Activity() {
             }
         }
         statusArc = StatusArcView(this).apply {
-            // 診断：長押しで今の判定結果を表示
+            // タップでWiFi⇔バッテリー数字を切替
+            setOnClickListener { showBatteryNumber = !showBatteryNumber }
+            // 長押しで判定を診断表示
             setOnLongClickListener { showNetDiagnostics(); true }
         }
 
@@ -344,17 +346,16 @@ class MainActivity : Activity() {
         } catch (e: Exception) {}
     }
 
- // WiFi/モバイルに接続しているかを素直に判定（疎通確認はしない）
+    // 今アクティブな回線を見てWiFi/モバイルを判定
     private fun readNet(): Pair<Boolean, Boolean> {
         var wifi = false
         var mobile = false
         try {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            for (n in cm.allNetworks) {
-                val caps = cm.getNetworkCapabilities(n) ?: continue
-                if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) continue
-                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) wifi = true
-                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) mobile = true
+            val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+            if (caps != null) {
+                wifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                mobile = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
             }
         } catch (e: Exception) {}
         return Pair(wifi, mobile)
@@ -366,7 +367,6 @@ class MainActivity : Activity() {
         statusArc.mobileOn = mobile
     }
 
-    // 診断：今の判定を画面に出す
     private fun showNetDiagnostics() {
         val (wifi, mobile) = readNet()
         Toast.makeText(this, "WiFi=$wifi / モバイル=$mobile", Toast.LENGTH_LONG).show()
