@@ -150,9 +150,7 @@ class MainActivity : Activity() {
             }
         }
         statusArc = StatusArcView(this).apply {
-            // タップでWiFi⇔バッテリー数字を切替
             setOnClickListener { showBatteryNumber = !showBatteryNumber }
-            // 長押しで判定を診断表示
             setOnLongClickListener { showNetDiagnostics(); true }
         }
 
@@ -346,20 +344,16 @@ class MainActivity : Activity() {
         } catch (e: Exception) {}
     }
 
-      // 旧APIで判定（非推奨だが確実に動くことが多い）
+    // 全ネットワークを条件なしで走査（VALIDATED等で絞らない）
     private fun readNet(): Pair<Boolean, Boolean> {
         var wifi = false
         var mobile = false
         try {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            @Suppress("DEPRECATION")
-            val info = cm.activeNetworkInfo
-            @Suppress("DEPRECATION")
-            if (info != null && info.isConnected) {
-                when (info.type) {
-                    ConnectivityManager.TYPE_WIFI -> wifi = true
-                    ConnectivityManager.TYPE_MOBILE -> mobile = true
-                }
+            for (n in cm.allNetworks) {
+                val caps = cm.getNetworkCapabilities(n) ?: continue
+                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) wifi = true
+                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) mobile = true
             }
         } catch (e: Exception) {}
         return Pair(wifi, mobile)
@@ -372,8 +366,22 @@ class MainActivity : Activity() {
     }
 
     private fun showNetDiagnostics() {
+        // allNetworksの中身も詳しく出す
+        val sb = StringBuilder()
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val nets = cm.allNetworks
+            sb.append("回線数=${nets.size}\n")
+            for (n in nets) {
+                val caps = cm.getNetworkCapabilities(n)
+                val w = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+                val c = caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
+                sb.append("・WiFi=$w Cell=$c\n")
+            }
+        } catch (e: Exception) { sb.append("例外:${e.message}") }
         val (wifi, mobile) = readNet()
-        Toast.makeText(this, "WiFi=$wifi / モバイル=$mobile", Toast.LENGTH_LONG).show()
+        sb.append("判定 WiFi=$wifi / モバイル=$mobile")
+        Toast.makeText(this, sb.toString(), Toast.LENGTH_LONG).show()
     }
 
     private fun maybeAskLocation() {
