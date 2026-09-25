@@ -344,7 +344,7 @@ class MainActivity : Activity() {
         } catch (e: Exception) {}
     }
 
-    // 全ネットワークを条件なしで走査（VALIDATED等で絞らない）
+    // 実際にネットに出られる回線だけをWiFi/モバイルとして判定
     private fun readNet(): Pair<Boolean, Boolean> {
         var wifi = false
         var mobile = false
@@ -352,6 +352,9 @@ class MainActivity : Activity() {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             for (n in cm.allNetworks) {
                 val caps = cm.getNetworkCapabilities(n) ?: continue
+                val usable = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                             caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                if (!usable) continue
                 if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) wifi = true
                 if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) mobile = true
             }
@@ -366,7 +369,6 @@ class MainActivity : Activity() {
     }
 
     private fun showNetDiagnostics() {
-        // allNetworksの中身も詳しく出す
         val sb = StringBuilder()
         try {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -376,7 +378,8 @@ class MainActivity : Activity() {
                 val caps = cm.getNetworkCapabilities(n)
                 val w = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
                 val c = caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
-                sb.append("・WiFi=$w Cell=$c\n")
+                val v = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+                sb.append("・WiFi=$w Cell=$c 疎通=$v\n")
             }
         } catch (e: Exception) { sb.append("例外:${e.message}") }
         val (wifi, mobile) = readNet()
