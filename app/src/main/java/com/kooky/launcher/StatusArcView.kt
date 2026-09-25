@@ -17,6 +17,7 @@ class StatusArcView(context: Context) : View(context) {
         set(value) { field = value; invalidate() }
 
     private val orange = Color.parseColor("#FF8C00")
+    private val gray = Color.parseColor("#666666")   // OFF時のグレー
     private val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val dot = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -28,7 +29,6 @@ class StatusArcView(context: Context) : View(context) {
         val r = u * 0.40f
 
         val start = 135f; val sweep = 270f
-        // バッテリー円弧を細く（0.09 → 0.05）
         arc.strokeWidth = u * 0.05f
         val rect = RectF(cx - r, cy - r, cx + r, cy + r)
 
@@ -39,8 +39,8 @@ class StatusArcView(context: Context) : View(context) {
         arc.color = if (ratio <= 0.2f) Color.WHITE else orange
         canvas.drawArc(rect, start, sweep * ratio, false, arc)
 
-        // 中央WiFi（弧3本＋点）：接続=オレンジ / 非接続=白
-        val wc = if (wifiOn) orange else Color.WHITE
+        // 中央WiFi：ON=オレンジ / OFF=グレー
+        val wc = if (wifiOn) orange else gray
         line.color = wc; line.strokeWidth = u * 0.035f
         dot.color = wc
         val apexY = cy + u * 0.10f
@@ -51,8 +51,8 @@ class StatusArcView(context: Context) : View(context) {
         }
         canvas.drawCircle(cx, apexY, u * 0.018f, dot)
 
-        // 下モバイル（3ドット）：接続=オレンジ / 非接続=白
-        dot.color = if (mobileOn) orange else Color.WHITE
+        // 下モバイル：ON=オレンジ / OFF=グレー
+        dot.color = if (mobileOn) orange else gray
         val my = cy + u * 0.26f
         for (k in -1..1) {
             canvas.drawCircle(cx + k * u * 0.11f, my, u * 0.022f, dot)
