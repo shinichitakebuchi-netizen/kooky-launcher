@@ -73,7 +73,10 @@ class MainActivity : Activity() {
     private val appsTopPadDp = 4
     private val sideMarginDp = 12
     private val cellPadDp = 14
-    private val gridHeightDp = 420
+    // アプリの表示行数（3行）
+    private val gridRows = 3
+    // アプリ1マスの高さ（アイコン56＋ラベル＋余白）の目安
+    private val cellHeightDp = 96
 
     private val releasesUrl = "https://github.com/shinichitakebuchi-netizen/kooky-launcher/releases/latest"
 
@@ -163,21 +166,25 @@ class MainActivity : Activity() {
             setOnClickListener { openCalendar() }
         }
 
+        // 天気＋インジケーターを下端揃えで横並び
         val weatherRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            gravity = Gravity.BOTTOM   // ← 下端揃え
             addView(weatherView, LinearLayout.LayoutParams(dp(72), dp(72)))
-            addView(statusArc, LinearLayout.LayoutParams(dp(30), dp(30)).apply {
+            addView(statusArc, LinearLayout.LayoutParams(dp(36), dp(36)).apply {
                 leftMargin = dp(10)
+                bottomMargin = dp(4)   // 下端の微調整
             })
         }
 
+        // 上ブロック：空白の中央に〔天気＋インジケーター→時計→日付〕
         val topArea = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             addView(weatherRow, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
+                bottomMargin = dp(2)
             })
             addView(clockText, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -256,6 +263,7 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.BLACK)
             isFocusable = true
             isFocusableInTouchMode = true
+            // 上ブロックが余白を全部使う → 天気・時計が空白の中央
             addView(topArea, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             val barMargin = dp(sideMarginDp + cellPadDp)
@@ -263,8 +271,9 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 setMargins(barMargin, 0, barMargin, dp(8))
             })
+            // アプリは3行ぶんの固定高さ
             addView(grid, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(gridHeightDp)))
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(gridRows * cellHeightDp)))
         }
 
         setContentView(content)
