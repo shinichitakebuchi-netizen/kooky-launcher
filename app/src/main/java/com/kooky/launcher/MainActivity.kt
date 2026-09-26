@@ -132,6 +132,15 @@ class MainActivity : Activity() {
     private var robotBusy = false
     private var facingLeft = false
 
+    // 飛ばし（フリック）状態
+    private var flying = false
+    private var flyVX = 0f
+    private var flyVY = 0f
+
+    // 睡眠状態
+    private var sleeping = false
+    private var awakeUntil = 0L   // この時刻まで起きている（起きてる間だけ漂う）
+
     private var torchOn = false
     private var cameraManager: CameraManager? = null
     private var torchCameraId: String? = null
@@ -325,10 +334,16 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(gridRows * cellHeightDp)))
         }
 
-        // ロボ：タップ＝AI選択、ダブルタップ＝ライト（長押しは廃止）
+        // ロボ：タップ＝AI選択、ダブルタップ＝ライト、フリック＝飛ばす
         val robotGesture = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean { onRobotTap(); return true }
-            override fun onDoubleTap(e: MotionEvent): Boolean { toggleTorch(); return true }
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                if (sleeping && isSleepTime()) { wakeUp(); return true }
+                toggleTorch(); return true
+            }
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
+                onRobotFling(vx, vy); return true
+            }
         })
 
         robot = ImageView(this).apply {
@@ -362,6 +377,7 @@ class MainActivity : Activity() {
             robot.x = robotX
             robot.y = robotY
             applyRobotVisibility()
+            enterSleepIfNeeded()
             updateRobotFace()
         }
     }
@@ -370,12 +386,92 @@ class MainActivity : Activity() {
         robot.visibility = if (showRobot) View.VISIBLE else View.GONE
     }
 
+    // 睡眠時間帯（21時〜6時）
+    private fun isSleepTime(): Boolean {
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        return hour >= 21 || hour < 6
+    }
+
+    private fun enterSleepIfNeeded() {
+        if (isSleepTime()) {
+            sleeping = true
+            awakeUntil = 0L
+            robot.rotation = 0f
+            robot.rotationY = 0f
+            robot.scaleX = 1f
+            robot.scaleY = 1f
+            robot.setImageResource(R.drawable.robot_sleep)
+        } else {
+            sleeping = false
+        }
+    }
+
+    // 起こす
+    private fun wakeUp() {
+        sleeping = false
+        awakeUntil = System.currentTimeMillis() + 20_000L  // 20秒起きてる
+        robot.setImageResource(R.drawable.robot_happy)
+        applyFacing()
+        // 20秒後に睡眠時間帯ならまた寝る
+        timeHandler.postDelayed({
+            if (isSleepTime()) enterSleepIfNeeded()
+            updateRobotFace()
+        }, 20_000L)
+    }
+
     private fun animateRobot() {
         if (!showRobot) return
         val w = rootFrame.width
         val h = rootFrame.height
         if (w == 0 || h == 0) return
         val size = dp(robotSizeDp)
+
+        // 睡眠時間帯に入ったら寝る（起きてる残り時間が切れたら）
+        if (isSleepTime() && !sleeping && awakeUntil != 0L && System.currentTimeMillis() > awakeUntil) {
+            enterSleepIfNeeded(); updateRobotFace()
+        }
+        // 睡眠時間帯に自然移行
+        if (isSleepTime() && !sleeping && awakeUntil == 0L) {
+            enterSleepIfNeeded(); updateRobotFace()
+        }
+        // 朝になったら起きる
+        if (!isSleepTime() && sleeping) {
+            sleeping = false; updateRobotFace()
+        }
+
+        // 寝てる間は動かない
+        if (sleeping) { robotTick++; return }
+
+        // 飛行中（フリック）
+        if (flying) {
+            robotX += flyVX
+            robotY += flyVY
+            val minX = 0f
+            val maxX = (w - size).toFloat()
+            val minY = h * 0.08f
+            val maxY = (h - size).toFloat()
+            var bounced = false
+            if (robotX < minX) { robotX = minX; flyVX = -flyVX * 0.7f; bounced = true }
+            if (robotX > maxX) { robotX = maxX; flyVX = -flyVX * 0.7f; bounced = true }
+            if (robotY < minY) { robotY = minY; flyVY = -flyVY * 0.7f; bounced = true }
+            if (robotY > maxY) { robotY = maxY; flyVY = -flyVY * 0.7f; bounced = true }
+            // 減速
+            flyVX *= 0.96f
+            flyVY *= 0.96f
+            robot.x = robotX
+            robot.y = robotY
+            robot.rotation = (robotTick * 8f) % 360   // 飛んでる間くるくる
+            // 勢いが弱まったら通常へ
+            if (kotlin.math.abs(flyVX) < 1.2f && kotlin.math.abs(flyVY) < 1.2f) {
+                flying = false
+                robot.rotation = 0f
+                robotVX = if (flyVX < 0) -1.6f else 1.6f
+                robotVY = if (flyVY < 0) -1.2f else 1.2f
+                updateRobotFace()
+            }
+            robotTick++
+            return
+        }
 
         if (!robotBusy) {
             if (robotTick % 40 == 0) {
@@ -423,24 +519,19 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun isNight(): Boolean {
-        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        return hour >= 22 || hour < 5
-    }
-
     private fun applyFacing() {
         val s = kotlin.math.abs(robot.scaleX).let { if (it < 0.1f) 1f else it }
         robot.scaleX = if (facingLeft) -s else s
     }
 
     private fun updateRobotFace() {
-        if (isNight()) robot.setImageResource(R.drawable.robot_sleep)
-        else robot.setImageResource(R.drawable.robot_normal)
+        if (sleeping) { robot.setImageResource(R.drawable.robot_sleep); return }
+        robot.setImageResource(R.drawable.robot_normal)
         applyFacing()
     }
 
     private fun randomFace() {
-        if (isNight()) { robot.setImageResource(R.drawable.robot_sleep); applyFacing(); return }
+        if (sleeping) return
         val faces = intArrayOf(
             R.drawable.robot_normal, R.drawable.robot_wink,
             R.drawable.robot_question, R.drawable.robot_hello,
@@ -452,7 +543,7 @@ class MainActivity : Activity() {
     }
 
     private fun restPause() {
-        if (robotBusy) return
+        if (robotBusy || sleeping) return
         robotBusy = true
         robot.setImageResource(R.drawable.robot_question)
         applyFacing()
@@ -463,7 +554,7 @@ class MainActivity : Activity() {
     }
 
     private fun startDash() {
-        if (robotBusy) return
+        if (robotBusy || sleeping || flying) return
         robotBusy = true
         val w = rootFrame.width
         val size = dp(robotSizeDp)
@@ -480,7 +571,27 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    // フリックで飛ばす
+    private fun onRobotFling(vx: Float, vy: Float) {
+        // 睡眠中は起こすだけ
+        if (sleeping && isSleepTime()) { wakeUp(); return }
+        robotBusy = false
+        flying = true
+        // 速度スケール（px/frame へ変換。フリック速度はpx/秒くらいなので縮小）
+        flyVX = (vx / 45f).coerceIn(-45f, 45f)
+        flyVY = (vy / 45f).coerceIn(-45f, 45f)
+        // 弱すぎるフリックは最低速を与える
+        if (kotlin.math.abs(flyVX) < 6f && kotlin.math.abs(flyVY) < 6f) {
+            flyVX = if (flyVX < 0) -12f else 12f
+        }
+        robot.setImageResource(R.drawable.robot_angry)  // 怒り顔で飛んでいく
+        robot.scaleX = 1f; robot.scaleY = 1f
+    }
+
     private fun onRobotTap() {
+        // 睡眠中は起こすだけ（AI選択は出さない）
+        if (sleeping && isSleepTime()) { wakeUp(); return }
+        if (flying) return
         robotBusy = true
         robot.setImageResource(R.drawable.robot_happy)
         applyFacing()
@@ -496,7 +607,6 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    // AI選択（ロボの吹き出し）
     private fun showAiSpeech() {
         aiPopup?.dismiss()
 
@@ -509,7 +619,6 @@ class MainActivity : Activity() {
                 setStroke(dp(1), orange)
             }
         }
-        // セリフ（ランダム）
         card.addView(TextView(this).apply {
             text = robotLines[Random.nextInt(robotLines.size)]
             setTextColor(Color.WHITE)
@@ -518,7 +627,6 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(dp(16), dp(12), dp(16), dp(8))
         })
-        // 選択肢
         for ((name, pkg, url) in aiList) {
             card.addView(View(this).apply {
                 setBackgroundColor(divider)
@@ -546,7 +654,6 @@ class MainActivity : Activity() {
         }
         aiPopup = popup
 
-        // ロボの位置に合わせて吹き出しを出す（下半分なら上、上半分なら下）
         val loc = IntArray(2)
         robot.getLocationInWindow(loc)
         val robotCx = loc[0] + robot.width / 2
@@ -557,10 +664,8 @@ class MainActivity : Activity() {
         val x = (robotCx - popupW / 2).coerceIn(dp(8), rootFrame.width - popupW - dp(8))
 
         if (robotTop > half) {
-            // ロボが下 → 吹き出しは上（ロボの上端の少し上）
             popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, x, robotTop - dp(150))
         } else {
-            // ロボが上 → 吹き出しは下
             popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, x, robotBottom + dp(8))
         }
     }
@@ -629,7 +734,7 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(robotAnim)
         timeHandler.post(robotAnim)
         applyRobotVisibility()
-        if (showRobot) updateRobotFace()
+        if (showRobot) { enterSleepIfNeeded(); updateRobotFace() }
     }
 
     override fun onPause() {
@@ -858,7 +963,7 @@ class MainActivity : Activity() {
             if (showRobot) orange else grayText) {
             showRobot = !showRobot; prefs.edit().putBoolean("show_robot", showRobot).apply()
             applyRobotVisibility()
-            if (showRobot) updateRobotFace() else aiPopup?.dismiss()
+            if (showRobot) { enterSleepIfNeeded(); updateRobotFace() } else aiPopup?.dismiss()
             dialog.dismiss(); showSettingsMenu()
         })
         card.addView(menuDivider())
