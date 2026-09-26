@@ -77,7 +77,14 @@ class MainActivity : Activity() {
     private val cellPadDp = 14
     private val gridRows = 3
     private val cellHeightDp = 108
-    private val cornerR = 6   // 全体の角丸を6で統一
+    private val cornerR = 6
+
+    // メニューの配色
+    private val cardBg = Color.parseColor("#1C1C22")
+    private val cardBorder = Color.parseColor("#333333")
+    private val divider = Color.parseColor("#2A2A30")
+    private val orange = Color.parseColor("#FF8C00")
+    private val grayText = Color.parseColor("#666666")
 
     private val releasesUrl = "https://github.com/shinichitakebuchi-netizen/kooky-launcher/releases/latest"
 
@@ -238,7 +245,7 @@ class MainActivity : Activity() {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(cornerR).toFloat()
                 setColor(Color.TRANSPARENT)
-                setStroke(dp(2), Color.parseColor("#FF8C00"))
+                setStroke(dp(2), orange)
             }
             setPadding(0, 0, 0, 0)
             addView(searchBar, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -447,28 +454,112 @@ class MainActivity : Activity() {
         return BitmapDrawable(resources, bmp)
     }
 
-    // 設定メニュー（□廃止・状態を文字で表示・タップで切替）
-    private fun showSettingsMenu() {
-        fun buildItems() = arrayOf(
-            "NAME        ${if (showLabels) "表示" else "非表示"}",
-            "ICON        ${if (useDesignIcon) "オリジナル" else "シンプル"}",
-            "INITIAL     ${if (showInitial) "表示" else "非表示"}",
-            "UPDATE      ›"
-        )
-        AlertDialog.Builder(this)
-            .setTitle("設定")
-            .setItems(buildItems()) { d, which ->
-                when (which) {
-                    0 -> { showLabels = !showLabels; prefs.edit().putBoolean("show_labels", showLabels).apply() }
-                    1 -> { useDesignIcon = !useDesignIcon; prefs.edit().putBoolean("use_design_icon", useDesignIcon).apply() }
-                    2 -> { showInitial = !showInitial; prefs.edit().putBoolean("show_initial", showInitial).apply() }
-                    3 -> { openUpdatePage(); return@setItems }
-                }
-                appAdapter.notifyDataSetChanged()
-                d.dismiss()
-                showSettingsMenu()
+    // ===== カスタムダイアログの部品 =====
+
+    // 角丸カードのコンテナを作る
+    private fun menuCard(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(cornerR).toFloat()
+                setColor(cardBg)
+                setStroke(dp(1), cardBorder)
             }
-            .show()
+        }
+    }
+
+    // タイトル行
+    private fun menuTitle(text: String): TextView {
+        return TextView(this).apply {
+            this.text = text
+            setTextColor(Color.WHITE)
+            textSize = 15f
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(dp(18), dp(16), dp(18), dp(10))
+        }
+    }
+
+    // 区切り線
+    private fun menuDivider(): View {
+        return View(this).apply {
+            setBackgroundColor(divider)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+        }
+    }
+
+    // 「左に名前・右に状態文字」の行
+    private fun menuRow(label: String, state: String, stateColor: Int, onClick: () -> Unit): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(14), dp(18), dp(14))
+            isClickable = true
+            setOnClickListener { onClick() }
+        }
+        val left = TextView(this).apply {
+            text = label
+            setTextColor(Color.WHITE)
+            textSize = 14f
+        }
+        val right = TextView(this).apply {
+            text = state
+            setTextColor(stateColor)
+            textSize = 13f
+        }
+        row.addView(left, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(right, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        return row
+    }
+
+    // 「単純なタップ項目」の行（アプリ長押しメニュー用）
+    private fun menuItem(label: String, onClick: () -> Unit): View {
+        return TextView(this).apply {
+            text = label
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            setPadding(dp(18), dp(14), dp(18), dp(14))
+            isClickable = true
+            setOnClickListener { onClick() }
+        }
+    }
+
+    // ===== 設定メニュー（デモ通り） =====
+    private fun showSettingsMenu() {
+        lateinit var dialog: AlertDialog
+        val card = menuCard()
+        card.addView(menuTitle("設定"))
+        card.addView(menuDivider())
+
+        card.addView(menuRow("NAME", if (showLabels) "表示" else "非表示",
+            if (showLabels) orange else grayText) {
+            showLabels = !showLabels; prefs.edit().putBoolean("show_labels", showLabels).apply()
+            appAdapter.notifyDataSetChanged(); dialog.dismiss(); showSettingsMenu()
+        })
+        card.addView(menuDivider())
+
+        card.addView(menuRow("ICON", if (useDesignIcon) "オリジナル" else "シンプル",
+            orange) {
+            useDesignIcon = !useDesignIcon; prefs.edit().putBoolean("use_design_icon", useDesignIcon).apply()
+            appAdapter.notifyDataSetChanged(); dialog.dismiss(); showSettingsMenu()
+        })
+        card.addView(menuDivider())
+
+        card.addView(menuRow("INITIAL", if (showInitial) "表示" else "非表示",
+            if (showInitial) orange else grayText) {
+            showInitial = !showInitial; prefs.edit().putBoolean("show_initial", showInitial).apply()
+            appAdapter.notifyDataSetChanged(); dialog.dismiss(); showSettingsMenu()
+        })
+        card.addView(menuDivider())
+
+        card.addView(menuRow("UPDATE", "›", grayText) {
+            dialog.dismiss(); openUpdatePage()
+        })
+
+        dialog = AlertDialog.Builder(this).setView(card).create()
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        dialog.show()
     }
 
     private fun openUpdatePage() {
@@ -480,68 +571,83 @@ class MainActivity : Activity() {
         }
     }
 
-    // アプリ長押しメニュー：名前変更＋利用回数リセット＋アプリ詳細
+    // ===== アプリ長押しメニュー（デモ通り：名前変更＋下部2項目） =====
     private fun showAppMenu(app: AppEntry) {
+        lateinit var dialog: AlertDialog
+        val card = menuCard()
+        card.addView(menuTitle("名前を変更"))
+
+        // 入力欄（下線オレンジ）
         val input = EditText(this).apply {
-            setText(displayName(app)); setSingleLine(true)
+            setText(displayName(app))
+            setSingleLine(true)
+            setTextColor(Color.WHITE)
+            background = null
+            val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            lp.setMargins(dp(18), 0, dp(18), 0)
+            layoutParams = lp
+            setPadding(dp(2), dp(4), dp(2), dp(6))
         }
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            val pad = dp(16)
-            setPadding(pad, dp(8), pad, 0)
-            addView(input, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            // 下部ボタン：利用回数リセット
-            val resetBtn = TextView(this@MainActivity).apply {
-                text = "利用回数をリセット"
-                setTextColor(Color.WHITE)
-                textSize = 15f
-                setPadding(0, dp(16), 0, dp(14))
-            }
-            addView(resetBtn)
-            // 下部ボタン：アプリ詳細
-            val detailBtn = TextView(this@MainActivity).apply {
-                text = "アプリ詳細"
-                setTextColor(Color.WHITE)
-                textSize = 15f
-                setPadding(0, dp(2), 0, dp(6))
-            }
-            addView(detailBtn)
+        val underline = View(this).apply {
+            setBackgroundColor(orange)
+            val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(2))
+            lp.setMargins(dp(18), 0, dp(18), 0)
+            layoutParams = lp
+        }
+        card.addView(input)
+        card.addView(underline)
 
-            resetBtn.setOnClickListener {
-                prefs.edit().remove(app.packageName).apply() // 利用回数=そのアプリのカウントを消す
-                sortApps(); applyFilter()
-                Toast.makeText(this@MainActivity, "利用回数をリセットしました", Toast.LENGTH_SHORT).show()
-                currentDialog?.dismiss()
-            }
-            detailBtn.setOnClickListener {
-                openAppDetail(app.packageName)
-                currentDialog?.dismiss()
+        // 保存/元に戻す/キャンセル 行
+        val btnRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            setPadding(dp(18), dp(10), dp(18), dp(12))
+        }
+        val cancel = TextView(this).apply {
+            text = "キャンセル"; setTextColor(grayText); textSize = 13f
+            setPadding(dp(10), dp(4), dp(10), dp(4)); isClickable = true
+            setOnClickListener { dialog.dismiss() }
+        }
+        val restore = TextView(this).apply {
+            text = "元に戻す"; setTextColor(grayText); textSize = 13f
+            setPadding(dp(10), dp(4), dp(10), dp(4)); isClickable = true
+            setOnClickListener {
+                prefs.edit().remove("name_" + app.packageName).apply()
+                sortApps(); applyFilter(); dialog.dismiss()
             }
         }
-
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("名前を変更")
-            .setView(container)
-            .setPositiveButton("保存") { _, _ ->
+        val save = TextView(this).apply {
+            text = "保存"; setTextColor(orange); textSize = 13f
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(dp(10), dp(4), dp(10), dp(4)); isClickable = true
+            setOnClickListener {
                 val newName = input.text.toString().trim()
                 if (newName.isNotEmpty()) prefs.edit().putString("name_" + app.packageName, newName).apply()
                 else prefs.edit().remove("name_" + app.packageName).apply()
-                sortApps(); applyFilter()
+                sortApps(); applyFilter(); dialog.dismiss()
             }
-            .setNegativeButton("元に戻す") { _, _ ->
-                prefs.edit().remove("name_" + app.packageName).apply()
-                sortApps(); applyFilter()
-            }
-            .setNeutralButton("キャンセル", null)
-            .create()
-        currentDialog = dialog
+        }
+        btnRow.addView(restore); btnRow.addView(cancel); btnRow.addView(save)
+        card.addView(btnRow)
+
+        // 下部：区切り＋2項目
+        card.addView(menuDivider())
+        card.addView(menuItem("利用回数をリセット") {
+            prefs.edit().remove(app.packageName).apply()
+            sortApps(); applyFilter()
+            Toast.makeText(this, "利用回数をリセットしました", Toast.LENGTH_SHORT).show()
+            dialog.dismiss()
+        })
+        card.addView(menuDivider())
+        card.addView(menuItem("アプリ詳細") {
+            dialog.dismiss(); openAppDetail(app.packageName)
+        })
+
+        dialog = AlertDialog.Builder(this).setView(card).create()
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
         dialog.show()
     }
 
-    private var currentDialog: AlertDialog? = null
-
-    // アプリ情報画面を開く
     private fun openAppDetail(pkg: String) {
         try {
             val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
