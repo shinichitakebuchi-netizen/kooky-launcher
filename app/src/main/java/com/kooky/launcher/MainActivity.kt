@@ -77,6 +77,7 @@ class MainActivity : Activity() {
     private val cellPadDp = 14
     private val gridRows = 3
     private val cellHeightDp = 108
+    private val cornerR = 6   // 全体の角丸を6で統一
 
     private val releasesUrl = "https://github.com/shinichitakebuchi-netizen/kooky-launcher/releases/latest"
 
@@ -151,7 +152,6 @@ class MainActivity : Activity() {
         }
         statusArc = StatusArcView(this).apply {
             setOnClickListener { showBatteryNumber = !showBatteryNumber }
-            setOnLongClickListener { showNetDiagnostics(); true }
         }
 
         clockText = TextView(this).apply {
@@ -236,7 +236,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(6).toFloat()
+                cornerRadius = dp(cornerR).toFloat()
                 setColor(Color.TRANSPARENT)
                 setStroke(dp(2), Color.parseColor("#FF8C00"))
             }
@@ -256,7 +256,7 @@ class MainActivity : Activity() {
                 launchApp(shown[position].packageName)
             }
             setOnItemLongClickListener { _, _, position, _ ->
-                renameApp(shown[position]); true
+                showAppMenu(shown[position]); true
             }
         }
 
@@ -344,7 +344,6 @@ class MainActivity : Activity() {
         } catch (e: Exception) {}
     }
 
-    // 実際にネットに出られる回線だけをWiFi/モバイルとして判定
     private fun readNet(): Pair<Boolean, Boolean> {
         var wifi = false
         var mobile = false
@@ -366,25 +365,6 @@ class MainActivity : Activity() {
         val (wifi, mobile) = readNet()
         statusArc.wifiOn = wifi
         statusArc.mobileOn = mobile
-    }
-
-    private fun showNetDiagnostics() {
-        val sb = StringBuilder()
-        try {
-            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val nets = cm.allNetworks
-            sb.append("回線数=${nets.size}\n")
-            for (n in nets) {
-                val caps = cm.getNetworkCapabilities(n)
-                val w = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-                val c = caps?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
-                val v = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
-                sb.append("・WiFi=$w Cell=$c 疎通=$v\n")
-            }
-        } catch (e: Exception) { sb.append("例外:${e.message}") }
-        val (wifi, mobile) = readNet()
-        sb.append("判定 WiFi=$wifi / モバイル=$mobile")
-        Toast.makeText(this, sb.toString(), Toast.LENGTH_LONG).show()
     }
 
     private fun maybeAskLocation() {
@@ -467,13 +447,13 @@ class MainActivity : Activity() {
         return BitmapDrawable(resources, bmp)
     }
 
+    // 設定メニュー（□廃止・状態を文字で表示・タップで切替）
     private fun showSettingsMenu() {
-        fun box(on: Boolean) = if (on) "■" else "□"
         fun buildItems() = arrayOf(
-            "【NAME】     ${box(showLabels)}",
-            "【ICON】      ${box(useDesignIcon)}",
-            "【INITIAL】  ${box(showInitial)}",
-            "【UPDATE】"
+            "NAME        ${if (showLabels) "表示" else "非表示"}",
+            "ICON        ${if (useDesignIcon) "オリジナル" else "シンプル"}",
+            "INITIAL     ${if (showInitial) "表示" else "非表示"}",
+            "UPDATE      ›"
         )
         AlertDialog.Builder(this)
             .setTitle("設定")
@@ -500,13 +480,49 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun renameApp(app: AppEntry) {
+    // アプリ長押しメニュー：名前変更＋利用回数リセット＋アプリ詳細
+    private fun showAppMenu(app: AppEntry) {
         val input = EditText(this).apply {
             setText(displayName(app)); setSingleLine(true)
         }
-        AlertDialog.Builder(this)
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = dp(16)
+            setPadding(pad, dp(8), pad, 0)
+            addView(input, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            // 下部ボタン：利用回数リセット
+            val resetBtn = TextView(this@MainActivity).apply {
+                text = "利用回数をリセット"
+                setTextColor(Color.WHITE)
+                textSize = 15f
+                setPadding(0, dp(16), 0, dp(14))
+            }
+            addView(resetBtn)
+            // 下部ボタン：アプリ詳細
+            val detailBtn = TextView(this@MainActivity).apply {
+                text = "アプリ詳細"
+                setTextColor(Color.WHITE)
+                textSize = 15f
+                setPadding(0, dp(2), 0, dp(6))
+            }
+            addView(detailBtn)
+
+            resetBtn.setOnClickListener {
+                prefs.edit().remove(app.packageName).apply() // 利用回数=そのアプリのカウントを消す
+                sortApps(); applyFilter()
+                Toast.makeText(this@MainActivity, "利用回数をリセットしました", Toast.LENGTH_SHORT).show()
+                currentDialog?.dismiss()
+            }
+            detailBtn.setOnClickListener {
+                openAppDetail(app.packageName)
+                currentDialog?.dismiss()
+            }
+        }
+
+        val dialog = AlertDialog.Builder(this)
             .setTitle("名前を変更")
-            .setView(input)
+            .setView(container)
             .setPositiveButton("保存") { _, _ ->
                 val newName = input.text.toString().trim()
                 if (newName.isNotEmpty()) prefs.edit().putString("name_" + app.packageName, newName).apply()
@@ -518,7 +534,23 @@ class MainActivity : Activity() {
                 sortApps(); applyFilter()
             }
             .setNeutralButton("キャンセル", null)
-            .show()
+            .create()
+        currentDialog = dialog
+        dialog.show()
+    }
+
+    private var currentDialog: AlertDialog? = null
+
+    // アプリ情報画面を開く
+    private fun openAppDetail(pkg: String) {
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            intent.data = Uri.parse("package:$pkg")
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "アプリ詳細を開けませんでした", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun displayName(app: AppEntry): String =
@@ -655,7 +687,7 @@ class MainActivity : Activity() {
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
         val inset = dp(2).toFloat()
-        val radius = dp(6).toFloat()
+        val radius = dp(cornerR).toFloat()
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
         canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, fill)
         val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
