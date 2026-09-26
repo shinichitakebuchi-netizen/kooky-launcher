@@ -50,6 +50,7 @@ import android.widget.FrameLayout
 import android.widget.GridView
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.PopupWindow
 import android.widget.TextView
 import android.widget.Toast
 import java.net.HttpURLConnection
@@ -95,11 +96,15 @@ class MainActivity : Activity() {
 
     private val releasesUrl = "https://github.com/shinichitakebuchi-netizen/kooky-launcher/releases/latest"
 
-    // AIアプリ（パッケージ / ブラウザfallback）
     private val aiList = listOf(
         Triple("Claude", "com.anthropic.claude", "https://claude.ai"),
         Triple("ChatGPT", "com.openai.chatgpt", "https://chatgpt.com"),
         Triple("Gemini", "com.google.android.apps.bard", "https://gemini.google.com")
+    )
+
+    private val robotLines = listOf(
+        "どのAIにする？", "だれを呼ぶ？", "話したい相手は？",
+        "ぼくが繋ぐよ！", "今日はだれと話す？"
     )
 
     private val fallbackLat = 36.389
@@ -109,6 +114,7 @@ class MainActivity : Activity() {
     private var showLabels = true
     private var useDesignIcon = true
     private var showInitial = true
+    private var showRobot = true
 
     private val readingMap = mapOf(
         "あはも" to "ahamo",
@@ -118,20 +124,19 @@ class MainActivity : Activity() {
 
     private var netCallback: ConnectivityManager.NetworkCallback? = null
 
-    // ロボ状態
     private var robotX = 0f
     private var robotY = 0f
     private var robotVX = 2.2f
     private var robotVY = 1.6f
     private var robotTick = 0
     private var robotBusy = false
-    private var robotHidden = false
     private var facingLeft = false
 
-    // フラッシュライト
     private var torchOn = false
     private var cameraManager: CameraManager? = null
     private var torchCameraId: String? = null
+
+    private var aiPopup: PopupWindow? = null
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -179,6 +184,7 @@ class MainActivity : Activity() {
         showLabels = prefs.getBoolean("show_labels", true)
         useDesignIcon = prefs.getBoolean("use_design_icon", true)
         showInitial = prefs.getBoolean("show_initial", true)
+        showRobot = prefs.getBoolean("show_robot", true)
 
         loadApps()
 
@@ -319,11 +325,10 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(gridRows * cellHeightDp)))
         }
 
-        // ロボのタップ／ダブルタップ／長押しを判定
+        // ロボ：タップ＝AI選択、ダブルタップ＝ライト（長押しは廃止）
         val robotGesture = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean { onRobotTap(); return true }
             override fun onDoubleTap(e: MotionEvent): Boolean { toggleTorch(); return true }
-            override fun onLongPress(e: MotionEvent) { hideRobot() }
         })
 
         robot = ImageView(this).apply {
@@ -331,19 +336,10 @@ class MainActivity : Activity() {
             setOnTouchListener { _, ev -> robotGesture.onTouchEvent(ev); true }
         }
 
-        // 背景のダブルタップ＝隠したロボを戻す
-        val bgGesture = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDoubleTap(e: MotionEvent): Boolean {
-                if (robotHidden) { showRobot(); return true }
-                return false
-            }
-        })
-
         rootFrame = FrameLayout(this).apply {
             addView(content, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             addView(robot, FrameLayout.LayoutParams(dp(robotSizeDp), dp(robotSizeDp)))
-            setOnTouchListener { _, ev -> bgGesture.onTouchEvent(ev); false }
         }
 
         setContentView(rootFrame)
@@ -365,20 +361,23 @@ class MainActivity : Activity() {
             robotY = rootFrame.height * 0.62f
             robot.x = robotX
             robot.y = robotY
+            applyRobotVisibility()
             updateRobotFace()
         }
     }
 
-    // ===== ロボのアニメーション（疑似3D） =====
+    private fun applyRobotVisibility() {
+        robot.visibility = if (showRobot) View.VISIBLE else View.GONE
+    }
+
     private fun animateRobot() {
-        if (robotHidden) return
+        if (!showRobot) return
         val w = rootFrame.width
         val h = rootFrame.height
         if (w == 0 || h == 0) return
         val size = dp(robotSizeDp)
 
         if (!robotBusy) {
-            // ゆらぎ：時々わずかに速度を変える
             if (robotTick % 40 == 0) {
                 robotVX += (Random.nextFloat() - 0.5f) * 0.6f
                 robotVY += (Random.nextFloat() - 0.5f) * 0.5f
@@ -397,16 +396,13 @@ class MainActivity : Activity() {
             if (robotY < minY) { robotY = minY; robotVY = kotlin.math.abs(robotVY) }
             if (robotY > maxY) { robotY = maxY; robotVY = -kotlin.math.abs(robotVY) }
 
-            // 進行方向で左右反転
             facingLeft = robotVX < 0
 
-            // 浮遊（上下）
             val fy = Math.sin(robotTick / 12.0).toFloat() * dp(3)
-            // 疑似3D：奥行きスケール＋傾き＋横回転のゆらぎ
-            val depth = Math.sin(robotTick / 55.0).toFloat()      // -1..1
-            val scale = 0.9f + (depth + 1f) / 2f * 0.25f          // 0.9..1.15
-            val tilt = Math.sin(robotTick / 38.0).toFloat() * 6f  // 左右傾き
-            val ry = Math.sin(robotTick / 60.0).toFloat() * 12f   // 横回転ゆらぎ
+            val depth = Math.sin(robotTick / 55.0).toFloat()
+            val scale = 0.9f + (depth + 1f) / 2f * 0.25f
+            val tilt = Math.sin(robotTick / 38.0).toFloat() * 6f
+            val ry = Math.sin(robotTick / 60.0).toFloat() * 12f
 
             robot.x = robotX
             robot.y = robotY + fy
@@ -455,7 +451,6 @@ class MainActivity : Activity() {
         timeHandler.postDelayed({ updateRobotFace() }, 1200)
     }
 
-    // 時々ピタッと止まって休む
     private fun restPause() {
         if (robotBusy) return
         robotBusy = true
@@ -474,7 +469,6 @@ class MainActivity : Activity() {
         val size = dp(robotSizeDp)
         robot.setImageResource(R.drawable.robot_dash)
         val fromLeft = robot.x < w / 2f
-        // ダッシュの向き：右へ→通常、左へ→反転
         facingLeft = !fromLeft
         applyFacing()
         val endX = if (fromLeft) (w - size).toFloat() else 0f
@@ -491,32 +485,84 @@ class MainActivity : Activity() {
         robot.setImageResource(R.drawable.robot_happy)
         applyFacing()
         val baseScale = kotlin.math.abs(robot.scaleX)
-        robot.animate().scaleX(if (facingLeft) -(baseScale + 0.25f) else baseScale + 0.25f)
-            .scaleY(baseScale + 0.25f).setDuration(120).withEndAction {
+        robot.animate().scaleX(if (facingLeft) -(baseScale + 0.2f) else baseScale + 0.2f)
+            .scaleY(baseScale + 0.2f).setDuration(120).withEndAction {
             robot.animate().scaleX(if (facingLeft) -baseScale else baseScale).scaleY(baseScale)
                 .setDuration(120).withEndAction {
                 robotBusy = false
                 updateRobotFace()
-                showAiMenu()
+                showAiSpeech()
             }.start()
         }.start()
     }
 
-    // AI選択メニュー
-    private fun showAiMenu() {
-        lateinit var dialog: AlertDialog
-        val card = menuCard()
-        card.addView(menuTitle("AIを選ぶ"))
-        card.addView(menuDivider())
-        for ((name, pkg, url) in aiList) {
-            card.addView(menuItem(name) {
-                dialog.dismiss(); openApp(pkg, url)
-            })
-            card.addView(menuDivider())
+    // AI選択（ロボの吹き出し）
+    private fun showAiSpeech() {
+        aiPopup?.dismiss()
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(14).toFloat()
+                setColor(cardBg)
+                setStroke(dp(1), orange)
+            }
         }
-        dialog = AlertDialog.Builder(this).setView(card).create()
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
-        dialog.show()
+        // セリフ（ランダム）
+        card.addView(TextView(this).apply {
+            text = robotLines[Random.nextInt(robotLines.size)]
+            setTextColor(Color.WHITE)
+            textSize = 13f
+            setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(dp(16), dp(12), dp(16), dp(8))
+        })
+        // 選択肢
+        for ((name, pkg, url) in aiList) {
+            card.addView(View(this).apply {
+                setBackgroundColor(divider)
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+            })
+            card.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(16), dp(11), dp(16), dp(11))
+                isClickable = true
+                setOnClickListener { aiPopup?.dismiss(); openApp(pkg, url) }
+                addView(TextView(this@MainActivity).apply {
+                    text = name; setTextColor(Color.WHITE); textSize = 14f
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                addView(TextView(this@MainActivity).apply {
+                    text = "›"; setTextColor(orange); textSize = 15f
+                })
+            })
+        }
+
+        val popup = PopupWindow(card,
+            dp(190), ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
+            isOutsideTouchable = true
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        }
+        aiPopup = popup
+
+        // ロボの位置に合わせて吹き出しを出す（下半分なら上、上半分なら下）
+        val loc = IntArray(2)
+        robot.getLocationInWindow(loc)
+        val robotCx = loc[0] + robot.width / 2
+        val robotTop = loc[1]
+        val robotBottom = loc[1] + robot.height
+        val half = rootFrame.height / 2
+        val popupW = dp(190)
+        val x = (robotCx - popupW / 2).coerceIn(dp(8), rootFrame.width - popupW - dp(8))
+
+        if (robotTop > half) {
+            // ロボが下 → 吹き出しは上（ロボの上端の少し上）
+            popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, x, robotTop - dp(150))
+        } else {
+            // ロボが上 → 吹き出しは下
+            popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, x, robotBottom + dp(8))
+        }
     }
 
     private fun openApp(pkg: String, url: String) {
@@ -535,7 +581,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // フラッシュライト切替
     private fun toggleTorch() {
         val id = torchCameraId
         if (id == null) {
@@ -551,22 +596,6 @@ class MainActivity : Activity() {
         } catch (e: Exception) {
             Toast.makeText(this, "ライトの切替に失敗しました", Toast.LENGTH_SHORT).show()
         }
-    }
-
-    private fun hideRobot() {
-        robotHidden = true
-        robot.animate().alpha(0f).scaleX(0.3f).scaleY(0.3f).setDuration(250).withEndAction {
-            robot.visibility = View.GONE
-        }.start()
-        Toast.makeText(this, "ロボを隠しました（画面ダブルタップで戻る）", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun showRobot() {
-        robotHidden = false
-        robot.visibility = View.VISIBLE
-        robot.alpha = 0f
-        updateRobotFace()
-        robot.animate().alpha(1f).scaleX(if (facingLeft) -1f else 1f).scaleY(1f).setDuration(250).start()
     }
 
     private fun hideSystemBars() {
@@ -599,7 +628,8 @@ class MainActivity : Activity() {
         timeHandler.post(weatherTick)
         timeHandler.removeCallbacks(robotAnim)
         timeHandler.post(robotAnim)
-        if (!robotHidden) updateRobotFace()
+        applyRobotVisibility()
+        if (showRobot) updateRobotFace()
     }
 
     override fun onPause() {
@@ -609,7 +639,7 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(tick)
         timeHandler.removeCallbacks(weatherTick)
         timeHandler.removeCallbacks(robotAnim)
-        // 画面を離れたらライトは消す
+        aiPopup?.dismiss()
         if (torchOn) {
             try { torchCameraId?.let { cameraManager?.setTorchMode(it, false) } } catch (e: Exception) {}
             torchOn = false
@@ -824,6 +854,14 @@ class MainActivity : Activity() {
             appAdapter.notifyDataSetChanged(); dialog.dismiss(); showSettingsMenu()
         })
         card.addView(menuDivider())
+        card.addView(menuRow("ROBOT", if (showRobot) "表示" else "非表示",
+            if (showRobot) orange else grayText) {
+            showRobot = !showRobot; prefs.edit().putBoolean("show_robot", showRobot).apply()
+            applyRobotVisibility()
+            if (showRobot) updateRobotFace() else aiPopup?.dismiss()
+            dialog.dismiss(); showSettingsMenu()
+        })
+        card.addView(menuDivider())
         card.addView(menuRow("UPDATE", "›", grayText) {
             dialog.dismiss(); openUpdatePage()
         })
@@ -991,6 +1029,7 @@ class MainActivity : Activity() {
     }
 
     override fun onBackPressed() {
+        if (aiPopup?.isShowing == true) { aiPopup?.dismiss(); return }
         if (!searchBar.text.isNullOrEmpty()) resetSearch() else super.onBackPressed()
     }
 
