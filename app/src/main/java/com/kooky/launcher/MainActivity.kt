@@ -44,6 +44,7 @@ import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.widget.BaseAdapter
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.GridView
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -52,9 +53,11 @@ import android.widget.Toast
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlin.concurrent.thread
+import kotlin.random.Random
 
 class MainActivity : Activity() {
 
@@ -70,6 +73,7 @@ class MainActivity : Activity() {
     private lateinit var dateText: TextView
     private lateinit var weatherView: WeatherView
     private lateinit var statusArc: StatusArcView
+    private lateinit var robot: ImageView
 
     private val gridColumns = 4
     private val appsTopPadDp = 4
@@ -78,8 +82,8 @@ class MainActivity : Activity() {
     private val gridRows = 3
     private val cellHeightDp = 108
     private val cornerR = 6
+    private val robotSizeDp = 76
 
-    // メニューの配色
     private val cardBg = Color.parseColor("#1C1C22")
     private val cardBorder = Color.parseColor("#333333")
     private val divider = Color.parseColor("#2A2A30")
@@ -87,6 +91,8 @@ class MainActivity : Activity() {
     private val grayText = Color.parseColor("#666666")
 
     private val releasesUrl = "https://github.com/shinichitakebuchi-netizen/kooky-launcher/releases/latest"
+    private val claudePackage = "com.anthropic.claude"
+    private val claudeUrl = "https://claude.ai"
 
     private val fallbackLat = 36.389
     private val fallbackLon = 139.063
@@ -103,6 +109,14 @@ class MainActivity : Activity() {
     )
 
     private var netCallback: ConnectivityManager.NetworkCallback? = null
+
+    // ロボの移動状態
+    private var robotX = 0f
+    private var robotY = 0f
+    private var robotVX = 2.2f
+    private var robotVY = 1.6f
+    private var robotTick = 0
+    private var robotBusy = false   // ダッシュ/タップ演出中は自動制御を止める
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -134,6 +148,14 @@ class MainActivity : Activity() {
         override fun run() {
             updateWeatherAtCurrentLocation(false)
             timeHandler.postDelayed(this, 60 * 60 * 1000L)
+        }
+    }
+
+    // ロボのアニメーション（約30fps）
+    private val robotAnim = object : Runnable {
+        override fun run() {
+            animateRobot()
+            timeHandler.postDelayed(this, 33)
         }
     }
 
@@ -283,11 +305,136 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(gridRows * cellHeightDp)))
         }
 
-        setContentView(content)
+        // ロボ（最前面に浮かせる）
+        robot = ImageView(this).apply {
+            setImageResource(R.drawable.robot_normal)
+            setOnClickListener { onRobotTap() }
+        }
+
+        // content（本体）＋robot（前面）を重ねる
+        val root = FrameLayout(this).apply {
+            addView(content, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(robot, FrameLayout.LayoutParams(dp(robotSizeDp), dp(robotSizeDp)))
+        }
+
+        setContentView(root)
 
         applyFilter()
         maybeAskNotificationAccess()
         maybeAskLocation()
+
+        // ロボ初期位置（画面中央あたり）
+        robot.post {
+            robotX = (root.width - dp(robotSizeDp)) / 2f
+            robotY = root.height * 0.62f
+            robot.x = robotX
+            robot.y = robotY
+            updateRobotFace()
+        }
+    }
+
+    // ===== ロボのアニメーション =====
+    private fun animateRobot() {
+        val parent = robot.parent as? View ?: return
+        val w = parent.width
+        val h = parent.height
+        if (w == 0 || h == 0) return
+        val size = dp(robotSizeDp)
+
+        if (!robotBusy) {
+            robotX += robotVX
+            robotY += robotVY
+            // 端で反射（上部は時計エリアを避けて少し下から、下はアプリ上あたりまで）
+            val minX = 0f
+            val maxX = (w - size).toFloat()
+            val minY = h * 0.30f
+            val maxY = h * 0.72f
+            if (robotX < minX) { robotX = minX; robotVX = kotlin.math.abs(robotVX) }
+            if (robotX > maxX) { robotX = maxX; robotVX = -kotlin.math.abs(robotVX) }
+            if (robotY < minY) { robotY = minY; robotVY = kotlin.math.abs(robotVY) }
+            if (robotY > maxY) { robotY = maxY; robotVY = -kotlin.math.abs(robotVY) }
+            // 上下のふわふわ
+            val fy = Math.sin(robotTick / 12.0).toFloat() * dp(3)
+            robot.x = robotX
+            robot.y = robotY + fy
+        }
+        robotTick++
+
+        // 時々ランダムに表情変化（夜は寝顔優先）＆たまにダッシュ
+        if (robotTick % 90 == 0 && !robotBusy) {
+            val r = Random.nextFloat()
+            if (r < 0.15f) startDash()
+            else randomFace()
+        }
+    }
+
+    private fun isNight(): Boolean {
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        return hour >= 22 || hour < 5
+    }
+
+    private fun updateRobotFace() {
+        if (isNight()) robot.setImageResource(R.drawable.robot_sleep)
+        else robot.setImageResource(R.drawable.robot_normal)
+    }
+
+    private fun randomFace() {
+        if (isNight()) { robot.setImageResource(R.drawable.robot_sleep); return }
+        val faces = intArrayOf(
+            R.drawable.robot_normal, R.drawable.robot_wink,
+            R.drawable.robot_question, R.drawable.robot_hello,
+            R.drawable.robot_transform
+        )
+        robot.setImageResource(faces[Random.nextInt(faces.size)])
+        // 1.2秒後に通常へ
+        timeHandler.postDelayed({ updateRobotFace() }, 1200)
+    }
+
+    private fun startDash() {
+        if (robotBusy) return
+        robotBusy = true
+        val parent = robot.parent as? View ?: run { robotBusy = false; return }
+        val w = parent.width
+        val size = dp(robotSizeDp)
+        robot.setImageResource(R.drawable.robot_dash)
+        val fromLeft = robot.x < w / 2f
+        val endX = if (fromLeft) (w - size).toFloat() else 0f
+        robot.animate().x(endX).setDuration(900).withEndAction {
+            robotX = robot.x
+            robotVX = if (fromLeft) -kotlin.math.abs(robotVX) else kotlin.math.abs(robotVX)
+            updateRobotFace()
+            robotBusy = false
+        }.start()
+    }
+
+    private fun onRobotTap() {
+        robotBusy = true
+        robot.setImageResource(R.drawable.robot_happy)
+        robot.animate().scaleX(1.25f).scaleY(1.25f).setDuration(120).withEndAction {
+            robot.animate().scaleX(1f).scaleY(1f).setDuration(120).withEndAction {
+                robotBusy = false
+                updateRobotFace()
+                openClaude()
+            }.start()
+        }.start()
+    }
+
+    private fun openClaude() {
+        try {
+            val intent = packageManager.getLaunchIntentForPackage(claudePackage)
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+                return
+            }
+        } catch (e: Exception) {}
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(claudeUrl))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            Toast.makeText(this, "Claudeを開けませんでした", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun hideSystemBars() {
@@ -318,6 +465,9 @@ class MainActivity : Activity() {
         timeHandler.post(tick)
         timeHandler.removeCallbacks(weatherTick)
         timeHandler.post(weatherTick)
+        timeHandler.removeCallbacks(robotAnim)
+        timeHandler.post(robotAnim)
+        updateRobotFace()
     }
 
     override fun onPause() {
@@ -326,6 +476,7 @@ class MainActivity : Activity() {
         unregisterNetworkCallback()
         timeHandler.removeCallbacks(tick)
         timeHandler.removeCallbacks(weatherTick)
+        timeHandler.removeCallbacks(robotAnim)
     }
 
     private fun registerNetworkCallback() {
@@ -454,9 +605,6 @@ class MainActivity : Activity() {
         return BitmapDrawable(resources, bmp)
     }
 
-    // ===== カスタムダイアログの部品 =====
-
-    // 角丸カードのコンテナを作る
     private fun menuCard(): LinearLayout {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -469,7 +617,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // タイトル行
     private fun menuTitle(text: String): TextView {
         return TextView(this).apply {
             this.text = text
@@ -480,7 +627,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // 区切り線
     private fun menuDivider(): View {
         return View(this).apply {
             setBackgroundColor(divider)
@@ -488,7 +634,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // 「左に名前・右に状態文字」の行
     private fun menuRow(label: String, state: String, stateColor: Int, onClick: () -> Unit): View {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -513,7 +658,6 @@ class MainActivity : Activity() {
         return row
     }
 
-    // 「単純なタップ項目」の行（アプリ長押しメニュー用）
     private fun menuItem(label: String, onClick: () -> Unit): View {
         return TextView(this).apply {
             text = label
@@ -525,7 +669,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // ===== 設定メニュー（デモ通り） =====
     private fun showSettingsMenu() {
         lateinit var dialog: AlertDialog
         val card = menuCard()
@@ -539,8 +682,7 @@ class MainActivity : Activity() {
         })
         card.addView(menuDivider())
 
-        card.addView(menuRow("ICON", if (useDesignIcon) "オリジナル" else "シンプル",
-            orange) {
+        card.addView(menuRow("ICON", if (useDesignIcon) "オリジナル" else "シンプル", orange) {
             useDesignIcon = !useDesignIcon; prefs.edit().putBoolean("use_design_icon", useDesignIcon).apply()
             appAdapter.notifyDataSetChanged(); dialog.dismiss(); showSettingsMenu()
         })
@@ -571,13 +713,11 @@ class MainActivity : Activity() {
         }
     }
 
-    // ===== アプリ長押しメニュー（デモ通り：名前変更＋下部2項目） =====
     private fun showAppMenu(app: AppEntry) {
         lateinit var dialog: AlertDialog
         val card = menuCard()
         card.addView(menuTitle("名前を変更"))
 
-        // 入力欄（下線オレンジ）
         val input = EditText(this).apply {
             setText(displayName(app))
             setSingleLine(true)
@@ -597,7 +737,6 @@ class MainActivity : Activity() {
         card.addView(input)
         card.addView(underline)
 
-        // 保存/元に戻す/キャンセル 行
         val btnRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END
@@ -630,7 +769,6 @@ class MainActivity : Activity() {
         btnRow.addView(restore); btnRow.addView(cancel); btnRow.addView(save)
         card.addView(btnRow)
 
-        // 下部：区切り＋2項目
         card.addView(menuDivider())
         card.addView(menuItem("利用回数をリセット") {
             prefs.edit().remove(app.packageName).apply()
