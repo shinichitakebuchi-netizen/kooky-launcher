@@ -87,6 +87,7 @@ class MainActivity : Activity() {
     private val cellHeightDp = 108
     private val cornerR = 6
     private val robotSizeDp = 76
+    private val idleTimeoutMs = 120_000L   // 2分操作なしで自動待機
 
     private val cardBg = Color.parseColor("#1C1C22")
     private val cardBorder = Color.parseColor("#333333")
@@ -114,7 +115,6 @@ class MainActivity : Activity() {
     private var showLabels = true
     private var useDesignIcon = true
     private var showInitial = true
-    private var robotActive = true   // true=起動 / false=待機
 
     private val readingMap = mapOf(
         "あはも" to "ahamo",
@@ -143,6 +143,9 @@ class MainActivity : Activity() {
     private var charging = false
     private var chargingParked = false
 
+    private var standby = false          // 自動待機中
+    private var lastInteractMs = 0L      // 最後にロボを操作した時刻
+
     private var torchOn = false
     private var cameraManager: CameraManager? = null
     private var torchCameraId: String? = null
@@ -159,7 +162,7 @@ class MainActivity : Activity() {
                              status == BatteryManager.BATTERY_STATUS_FULL
             if (isCharging != charging) {
                 charging = isCharging
-                if (robotActive) {
+                if (!standby) {
                     if (charging) startCharging() else stopCharging()
                 }
             }
@@ -204,7 +207,6 @@ class MainActivity : Activity() {
         showLabels = prefs.getBoolean("show_labels", true)
         useDesignIcon = prefs.getBoolean("use_design_icon", true)
         showInitial = prefs.getBoolean("show_initial", true)
-        robotActive = prefs.getBoolean("robot_active", true)
 
         loadApps()
 
@@ -347,16 +349,19 @@ class MainActivity : Activity() {
 
         val robotGesture = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                if (!robotActive) return true   // 待機中は反応しない
+                lastInteractMs = System.currentTimeMillis()
+                if (standby) { wakeFromStandby(); return true }   // 待機中はタップで起動
                 onRobotTap(); return true
             }
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                if (!robotActive) return true
+                if (standby) { wakeFromStandby(); return true }
+                lastInteractMs = System.currentTimeMillis()
                 if (sleeping && isSleepTime()) { wakeUp(); return true }
                 toggleTorch(); return true
             }
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
-                if (!robotActive) return true
+                if (standby) { wakeFromStandby(); return true }
+                lastInteractMs = System.currentTimeMillis()
                 onRobotFling(vx, vy); return true
             }
         })
@@ -387,39 +392,48 @@ class MainActivity : Activity() {
         maybeAskLocation()
 
         robot.post {
-            if (robotActive) {
-                robotX = (rootFrame.width - dp(robotSizeDp)) / 2f
-                robotY = rootFrame.height * 0.62f
-                robot.x = robotX
-                robot.y = robotY
-                enterSleepIfNeeded()
-                updateRobotFace()
-            } else {
-                goStandby()
-            }
+            robotX = (rootFrame.width - dp(robotSizeDp)) / 2f
+            robotY = rootFrame.height * 0.62f
+            robot.x = robotX
+            robot.y = robotY
+            lastInteractMs = System.currentTimeMillis()
+            enterSleepIfNeeded()
+            updateRobotFace()
         }
     }
 
-    // 待機モード：右上で完全停止
+    // 自動待機に入る
     private fun goStandby() {
+        standby = true
         flying = false
         sleeping = false
         robotBusy = false
         chargingParked = false
         isShowingQuestion = false
-        robot.visibility = View.VISIBLE
+        aiPopup?.dismiss()
         val w = rootFrame.width
         val size = dp(robotSizeDp)
         robotX = (w - size - dp(8)).toFloat()
         robotY = rootFrame.height * 0.12f
         robot.animate().cancel()
-        robot.x = robotX
-        robot.y = robotY
-        robot.rotation = 0f
-        robot.rotationY = 0f
-        robot.scaleX = 1f
-        robot.scaleY = 1f
-        robot.setImageResource(R.drawable.robot_standby)
+        robot.animate().x(robotX).y(robotY).setDuration(500).withEndAction {
+            robot.rotation = 0f; robot.rotationY = 0f
+            robot.scaleX = 1f; robot.scaleY = 1f
+            robot.setImageResource(R.drawable.robot_standby)
+        }.start()
+    }
+
+    // 待機からタップで起動
+    private fun wakeFromStandby() {
+        standby = false
+        lastInteractMs = System.currentTimeMillis()
+        robotBusy = false
+        flying = false
+        robot.animate().cancel()
+        robot.rotation = 0f; robot.rotationY = 0f
+        robot.scaleX = 1f; robot.scaleY = 1f
+        if (charging) startCharging()
+        else { enterSleepIfNeeded(); updateRobotFace() }
     }
 
     private fun isSleepTime(): Boolean {
@@ -428,7 +442,7 @@ class MainActivity : Activity() {
     }
 
     private fun enterSleepIfNeeded() {
-        if (charging || !robotActive) return
+        if (charging || standby) return
         if (isSleepTime()) {
             sleeping = true
             awakeUntil = 0L
@@ -448,13 +462,13 @@ class MainActivity : Activity() {
         robot.setImageResource(R.drawable.robot_happy)
         applyFacing()
         timeHandler.postDelayed({
-            if (isSleepTime() && !charging && robotActive) enterSleepIfNeeded()
+            if (isSleepTime() && !charging && !standby) enterSleepIfNeeded()
             updateRobotFace()
         }, 20_000L)
     }
 
     private fun startCharging() {
-        if (!robotActive) return
+        if (standby) return
         sleeping = false
         flying = false
         robotBusy = true
@@ -481,14 +495,21 @@ class MainActivity : Activity() {
     private fun stopCharging() {
         chargingParked = false
         robotBusy = false
-        if (!robotActive) { goStandby(); return }
+        if (standby) return
         if (isSleepTime()) { enterSleepIfNeeded() }
         updateRobotFace()
         robotVX = -1.8f; robotVY = 1.4f
     }
 
     private fun animateRobot() {
-        if (!robotActive) return   // 待機中は完全停止（何もしない）
+        // 自動待機の判定（充電中・睡眠中は待機に落とさない＝それぞれの待機状態がある）
+        if (!standby && !charging && !sleeping &&
+            System.currentTimeMillis() - lastInteractMs > idleTimeoutMs) {
+            goStandby()
+        }
+
+        if (standby) { robotTick++; return }   // 待機中は完全停止
+
         val w = rootFrame.width
         val h = rootFrame.height
         if (w == 0 || h == 0) return
@@ -598,7 +619,7 @@ class MainActivity : Activity() {
     }
 
     private fun updateRobotFace() {
-        if (!robotActive) { robot.setImageResource(R.drawable.robot_standby); return }
+        if (standby) { robot.setImageResource(R.drawable.robot_standby); return }
         if (flying) return
         isShowingQuestion = false
         if (charging && chargingParked) { robot.setImageResource(R.drawable.robot_charging); return }
@@ -608,7 +629,7 @@ class MainActivity : Activity() {
     }
 
     private fun randomFace() {
-        if (sleeping || charging || flying || !robotActive) return
+        if (sleeping || charging || flying || standby) return
         val faces = intArrayOf(
             R.drawable.robot_normal, R.drawable.robot_wink,
             R.drawable.robot_question, R.drawable.robot_hello,
@@ -622,7 +643,7 @@ class MainActivity : Activity() {
     }
 
     private fun restPause() {
-        if (robotBusy || sleeping || charging || flying || !robotActive) return
+        if (robotBusy || sleeping || charging || flying || standby) return
         robotBusy = true
         isShowingQuestion = true
         robot.setImageResource(R.drawable.robot_question)
@@ -634,7 +655,7 @@ class MainActivity : Activity() {
     }
 
     private fun startDash() {
-        if (robotBusy || sleeping || flying || charging || !robotActive) return
+        if (robotBusy || sleeping || flying || charging || standby) return
         robotBusy = true
         isShowingQuestion = false
         val w = rootFrame.width
@@ -779,7 +800,7 @@ class MainActivity : Activity() {
         try {
             torchOn = !torchOn
             cameraManager?.setTorchMode(id, torchOn)
-            if (!charging && !flying) {
+            if (!charging && !flying && !standby) {
                 robot.setImageResource(if (torchOn) R.drawable.robot_happy else R.drawable.robot_normal)
                 applyFacing()
                 if (!torchOn) timeHandler.postDelayed({ updateRobotFace() }, 600)
@@ -819,10 +840,12 @@ class MainActivity : Activity() {
         timeHandler.post(weatherTick)
         timeHandler.removeCallbacks(robotAnim)
         timeHandler.post(robotAnim)
-        if (robotActive) {
-            if (!charging) { enterSleepIfNeeded(); updateRobotFace() }
-        } else {
+        // 復帰時は操作時刻をリセット（すぐ待機に落ちないように）
+        lastInteractMs = System.currentTimeMillis()
+        if (standby) {
             robot.post { goStandby() }
+        } else {
+            if (!charging) { enterSleepIfNeeded(); updateRobotFace() }
         }
     }
 
@@ -1046,25 +1069,6 @@ class MainActivity : Activity() {
             if (showInitial) orange else grayText) {
             showInitial = !showInitial; prefs.edit().putBoolean("show_initial", showInitial).apply()
             appAdapter.notifyDataSetChanged(); dialog.dismiss(); showSettingsMenu()
-        })
-        card.addView(menuDivider())
-        card.addView(menuRow("ROBOT", if (robotActive) "起動" else "待機",
-            if (robotActive) orange else grayText) {
-            robotActive = !robotActive; prefs.edit().putBoolean("robot_active", robotActive).apply()
-            if (robotActive) {
-                // 起動：中央付近から漂い開始
-                robotX = (rootFrame.width - dp(robotSizeDp)) / 2f
-                robotY = rootFrame.height * 0.62f
-                robot.animate().cancel()
-                robot.x = robotX; robot.y = robotY
-                robotBusy = false; flying = false
-                if (charging) startCharging()
-                else { enterSleepIfNeeded(); updateRobotFace() }
-            } else {
-                aiPopup?.dismiss()
-                goStandby()
-            }
-            dialog.dismiss(); showSettingsMenu()
         })
         card.addView(menuDivider())
         card.addView(menuRow("UPDATE", "›", grayText) {
