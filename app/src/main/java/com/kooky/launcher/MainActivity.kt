@@ -131,6 +131,7 @@ class MainActivity : Activity() {
     private var robotTick = 0
     private var robotBusy = false
     private var facingLeft = false
+    private var isShowingQuestion = false
 
     private var flying = false
     private var flyVX = 0f
@@ -139,9 +140,8 @@ class MainActivity : Activity() {
     private var sleeping = false
     private var awakeUntil = 0L
 
-    // 充電状態
     private var charging = false
-    private var chargingParked = false   // 右上に到着して待機中か
+    private var chargingParked = false
 
     private var torchOn = false
     private var cameraManager: CameraManager? = null
@@ -400,7 +400,7 @@ class MainActivity : Activity() {
     }
 
     private fun enterSleepIfNeeded() {
-        if (charging) return  // 充電中は睡眠より充電優先
+        if (charging) return
         if (isSleepTime()) {
             sleeping = true
             awakeUntil = 0L
@@ -425,15 +425,14 @@ class MainActivity : Activity() {
         }, 20_000L)
     }
 
-    // ===== 充電モード =====
     private fun startCharging() {
         if (!showRobot) return
         sleeping = false
         flying = false
         robotBusy = true
         chargingParked = false
+        isShowingQuestion = false
         robot.setImageResource(R.drawable.robot_dash)
-        // 右上へダッシュ
         val w = rootFrame.width
         val size = dp(robotSizeDp)
         val targetX = (w - size - dp(8)).toFloat()
@@ -454,7 +453,6 @@ class MainActivity : Activity() {
     private fun stopCharging() {
         chargingParked = false
         robotBusy = false
-        // 睡眠時間帯なら寝る、そうでなければ漂いに戻る
         if (isSleepTime()) { enterSleepIfNeeded() }
         updateRobotFace()
         robotVX = -1.8f; robotVY = 1.4f
@@ -467,7 +465,6 @@ class MainActivity : Activity() {
         if (w == 0 || h == 0) return
         val size = dp(robotSizeDp)
 
-        // 充電中：右上でその場ふわふわ（到着後）
         if (charging) {
             if (chargingParked) {
                 val fy = Math.sin(robotTick / 12.0).toFloat() * dp(3)
@@ -477,7 +474,6 @@ class MainActivity : Activity() {
             return
         }
 
-        // 睡眠処理
         if (isSleepTime() && !sleeping && awakeUntil != 0L && System.currentTimeMillis() > awakeUntil) {
             enterSleepIfNeeded(); updateRobotFace()
         }
@@ -489,6 +485,7 @@ class MainActivity : Activity() {
         }
         if (sleeping) { robotTick++; return }
 
+        // 飛行中（フリック）
         if (flying) {
             robotX += flyVX
             robotY += flyVY
@@ -505,6 +502,7 @@ class MainActivity : Activity() {
             robot.x = robotX
             robot.y = robotY
             robot.rotation = (robotTick * 8f) % 360
+            // 飛行中は怒り顔を維持（他が触らないよう、ここでも固定）
             if (kotlin.math.abs(flyVX) < 1.2f && kotlin.math.abs(flyVY) < 1.2f) {
                 flying = false
                 robot.rotation = 0f
@@ -548,7 +546,6 @@ class MainActivity : Activity() {
             robot.rotation = tilt
             robot.rotationY = ry
             robot.scaleY = scale
-            // questionのときは反転しない
             if (isShowingQuestion) robot.scaleX = scale
             else robot.scaleX = if (facingLeft) -scale else scale
         }
@@ -564,8 +561,6 @@ class MainActivity : Activity() {
         }
     }
 
-    private var isShowingQuestion = false
-
     private fun applyFacing() {
         if (isShowingQuestion) {
             robot.scaleX = kotlin.math.abs(robot.scaleX).let { if (it < 0.1f) 1f else it }
@@ -576,6 +571,7 @@ class MainActivity : Activity() {
     }
 
     private fun updateRobotFace() {
+        if (flying) return
         isShowingQuestion = false
         if (charging && chargingParked) { robot.setImageResource(R.drawable.robot_charging); return }
         if (sleeping) { robot.setImageResource(R.drawable.robot_sleep); return }
@@ -584,7 +580,7 @@ class MainActivity : Activity() {
     }
 
     private fun randomFace() {
-        if (sleeping || charging) return
+        if (sleeping || charging || flying) return
         val faces = intArrayOf(
             R.drawable.robot_normal, R.drawable.robot_wink,
             R.drawable.robot_question, R.drawable.robot_hello,
@@ -598,7 +594,7 @@ class MainActivity : Activity() {
     }
 
     private fun restPause() {
-        if (robotBusy || sleeping || charging) return
+        if (robotBusy || sleeping || charging || flying) return
         robotBusy = true
         isShowingQuestion = true
         robot.setImageResource(R.drawable.robot_question)
@@ -628,33 +624,41 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    // フリックで飛ばす（位置確定＋速度整理＋怒り顔固定）
     private fun onRobotFling(vx: Float, vy: Float) {
         if (sleeping && isSleepTime()) { wakeUp(); return }
-        if (charging) return   // 充電中は飛ばさない
+        if (charging) return
         robotBusy = false
         isShowingQuestion = false
         flying = true
-        flyVX = (vx / 45f).coerceIn(-45f, 45f)
-        flyVY = (vy / 45f).coerceIn(-45f, 45f)
+        // 現在の実表示位置を確定（ズレ防止）
+        robotX = robot.x
+        robotY = robot.y
+        // 速度スケール（過敏さを抑える）
+        flyVX = (vx / 55f).coerceIn(-40f, 40f)
+        flyVY = (vy / 55f).coerceIn(-40f, 40f)
         if (kotlin.math.abs(flyVX) < 6f && kotlin.math.abs(flyVY) < 6f) {
             flyVX = if (flyVX < 0) -12f else 12f
         }
+        // 回転・反転をリセットしてから怒り顔
+        robot.rotation = 0f
+        robot.rotationY = 0f
+        robot.scaleX = 1f
+        robot.scaleY = 1f
         robot.setImageResource(R.drawable.robot_angry)
-        robot.scaleX = 1f; robot.scaleY = 1f
     }
 
     private fun onRobotTap() {
         if (sleeping && isSleepTime()) { wakeUp(); return }
         if (flying) return
-        // 充電中でもタップでAI選択は可能（待機位置は動かさない）
         robotBusy = true
         isShowingQuestion = false
         robot.setImageResource(R.drawable.robot_happy)
         applyFacing()
         val baseScale = kotlin.math.abs(robot.scaleX)
-        robot.animate().scaleX(if (facingLeft && !isShowingQuestion) -(baseScale + 0.2f) else baseScale + 0.2f)
+        robot.animate().scaleX(if (facingLeft) -(baseScale + 0.2f) else baseScale + 0.2f)
             .scaleY(baseScale + 0.2f).setDuration(120).withEndAction {
-            robot.animate().scaleX(if (facingLeft && !isShowingQuestion) -baseScale else baseScale).scaleY(baseScale)
+            robot.animate().scaleX(if (facingLeft) -baseScale else baseScale).scaleY(baseScale)
                 .setDuration(120).withEndAction {
                 robotBusy = false
                 updateRobotFace()
@@ -751,7 +755,7 @@ class MainActivity : Activity() {
         try {
             torchOn = !torchOn
             cameraManager?.setTorchMode(id, torchOn)
-            if (!charging) {
+            if (!charging && !flying) {
                 robot.setImageResource(if (torchOn) R.drawable.robot_happy else R.drawable.robot_normal)
                 applyFacing()
                 if (!torchOn) timeHandler.postDelayed({ updateRobotFace() }, 600)
