@@ -114,7 +114,7 @@ class MainActivity : Activity() {
     private var showLabels = true
     private var useDesignIcon = true
     private var showInitial = true
-    private var showRobot = true
+    private var robotActive = true   // true=起動 / false=待機
 
     private val readingMap = mapOf(
         "あはも" to "ahamo",
@@ -159,7 +159,9 @@ class MainActivity : Activity() {
                              status == BatteryManager.BATTERY_STATUS_FULL
             if (isCharging != charging) {
                 charging = isCharging
-                if (charging) startCharging() else stopCharging()
+                if (robotActive) {
+                    if (charging) startCharging() else stopCharging()
+                }
             }
         }
     }
@@ -202,7 +204,7 @@ class MainActivity : Activity() {
         showLabels = prefs.getBoolean("show_labels", true)
         useDesignIcon = prefs.getBoolean("use_design_icon", true)
         showInitial = prefs.getBoolean("show_initial", true)
-        showRobot = prefs.getBoolean("show_robot", true)
+        robotActive = prefs.getBoolean("robot_active", true)
 
         loadApps()
 
@@ -344,12 +346,17 @@ class MainActivity : Activity() {
         }
 
         val robotGesture = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onSingleTapConfirmed(e: MotionEvent): Boolean { onRobotTap(); return true }
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                if (!robotActive) return true   // 待機中は反応しない
+                onRobotTap(); return true
+            }
             override fun onDoubleTap(e: MotionEvent): Boolean {
+                if (!robotActive) return true
                 if (sleeping && isSleepTime()) { wakeUp(); return true }
                 toggleTorch(); return true
             }
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
+                if (!robotActive) return true
                 onRobotFling(vx, vy); return true
             }
         })
@@ -380,18 +387,39 @@ class MainActivity : Activity() {
         maybeAskLocation()
 
         robot.post {
-            robotX = (rootFrame.width - dp(robotSizeDp)) / 2f
-            robotY = rootFrame.height * 0.62f
-            robot.x = robotX
-            robot.y = robotY
-            applyRobotVisibility()
-            enterSleepIfNeeded()
-            updateRobotFace()
+            if (robotActive) {
+                robotX = (rootFrame.width - dp(robotSizeDp)) / 2f
+                robotY = rootFrame.height * 0.62f
+                robot.x = robotX
+                robot.y = robotY
+                enterSleepIfNeeded()
+                updateRobotFace()
+            } else {
+                goStandby()
+            }
         }
     }
 
-    private fun applyRobotVisibility() {
-        robot.visibility = if (showRobot) View.VISIBLE else View.GONE
+    // 待機モード：右上で完全停止
+    private fun goStandby() {
+        flying = false
+        sleeping = false
+        robotBusy = false
+        chargingParked = false
+        isShowingQuestion = false
+        robot.visibility = View.VISIBLE
+        val w = rootFrame.width
+        val size = dp(robotSizeDp)
+        robotX = (w - size - dp(8)).toFloat()
+        robotY = rootFrame.height * 0.12f
+        robot.animate().cancel()
+        robot.x = robotX
+        robot.y = robotY
+        robot.rotation = 0f
+        robot.rotationY = 0f
+        robot.scaleX = 1f
+        robot.scaleY = 1f
+        robot.setImageResource(R.drawable.robot_standby)
     }
 
     private fun isSleepTime(): Boolean {
@@ -400,7 +428,7 @@ class MainActivity : Activity() {
     }
 
     private fun enterSleepIfNeeded() {
-        if (charging) return
+        if (charging || !robotActive) return
         if (isSleepTime()) {
             sleeping = true
             awakeUntil = 0L
@@ -420,13 +448,13 @@ class MainActivity : Activity() {
         robot.setImageResource(R.drawable.robot_happy)
         applyFacing()
         timeHandler.postDelayed({
-            if (isSleepTime() && !charging) enterSleepIfNeeded()
+            if (isSleepTime() && !charging && robotActive) enterSleepIfNeeded()
             updateRobotFace()
         }, 20_000L)
     }
 
     private fun startCharging() {
-        if (!showRobot) return
+        if (!robotActive) return
         sleeping = false
         flying = false
         robotBusy = true
@@ -453,13 +481,14 @@ class MainActivity : Activity() {
     private fun stopCharging() {
         chargingParked = false
         robotBusy = false
+        if (!robotActive) { goStandby(); return }
         if (isSleepTime()) { enterSleepIfNeeded() }
         updateRobotFace()
         robotVX = -1.8f; robotVY = 1.4f
     }
 
     private fun animateRobot() {
-        if (!showRobot) return
+        if (!robotActive) return   // 待機中は完全停止（何もしない）
         val w = rootFrame.width
         val h = rootFrame.height
         if (w == 0 || h == 0) return
@@ -485,7 +514,6 @@ class MainActivity : Activity() {
         }
         if (sleeping) { robotTick++; return }
 
-        // 飛行中（フリック）
         if (flying) {
             robotX += flyVX
             robotY += flyVY
@@ -502,7 +530,6 @@ class MainActivity : Activity() {
             robot.x = robotX
             robot.y = robotY
             robot.rotation = (robotTick * 8f) % 360
-            // 飛行中は怒り顔を維持（他が触らないよう、ここでも固定）
             if (kotlin.math.abs(flyVX) < 1.2f && kotlin.math.abs(flyVY) < 1.2f) {
                 flying = false
                 robot.rotation = 0f
@@ -571,6 +598,7 @@ class MainActivity : Activity() {
     }
 
     private fun updateRobotFace() {
+        if (!robotActive) { robot.setImageResource(R.drawable.robot_standby); return }
         if (flying) return
         isShowingQuestion = false
         if (charging && chargingParked) { robot.setImageResource(R.drawable.robot_charging); return }
@@ -580,7 +608,7 @@ class MainActivity : Activity() {
     }
 
     private fun randomFace() {
-        if (sleeping || charging || flying) return
+        if (sleeping || charging || flying || !robotActive) return
         val faces = intArrayOf(
             R.drawable.robot_normal, R.drawable.robot_wink,
             R.drawable.robot_question, R.drawable.robot_hello,
@@ -594,7 +622,7 @@ class MainActivity : Activity() {
     }
 
     private fun restPause() {
-        if (robotBusy || sleeping || charging || flying) return
+        if (robotBusy || sleeping || charging || flying || !robotActive) return
         robotBusy = true
         isShowingQuestion = true
         robot.setImageResource(R.drawable.robot_question)
@@ -606,7 +634,7 @@ class MainActivity : Activity() {
     }
 
     private fun startDash() {
-        if (robotBusy || sleeping || flying || charging) return
+        if (robotBusy || sleeping || flying || charging || !robotActive) return
         robotBusy = true
         isShowingQuestion = false
         val w = rootFrame.width
@@ -624,23 +652,19 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    // フリックで飛ばす（位置確定＋速度整理＋怒り顔固定）
     private fun onRobotFling(vx: Float, vy: Float) {
         if (sleeping && isSleepTime()) { wakeUp(); return }
         if (charging) return
         robotBusy = false
         isShowingQuestion = false
         flying = true
-        // 現在の実表示位置を確定（ズレ防止）
         robotX = robot.x
         robotY = robot.y
-        // 速度スケール（過敏さを抑える）
         flyVX = (vx / 55f).coerceIn(-40f, 40f)
         flyVY = (vy / 55f).coerceIn(-40f, 40f)
         if (kotlin.math.abs(flyVX) < 6f && kotlin.math.abs(flyVY) < 6f) {
             flyVX = if (flyVX < 0) -12f else 12f
         }
-        // 回転・反転をリセットしてから怒り顔
         robot.rotation = 0f
         robot.rotationY = 0f
         robot.scaleX = 1f
@@ -795,8 +819,11 @@ class MainActivity : Activity() {
         timeHandler.post(weatherTick)
         timeHandler.removeCallbacks(robotAnim)
         timeHandler.post(robotAnim)
-        applyRobotVisibility()
-        if (showRobot && !charging) { enterSleepIfNeeded(); updateRobotFace() }
+        if (robotActive) {
+            if (!charging) { enterSleepIfNeeded(); updateRobotFace() }
+        } else {
+            robot.post { goStandby() }
+        }
     }
 
     override fun onPause() {
@@ -1021,11 +1048,22 @@ class MainActivity : Activity() {
             appAdapter.notifyDataSetChanged(); dialog.dismiss(); showSettingsMenu()
         })
         card.addView(menuDivider())
-        card.addView(menuRow("ROBOT", if (showRobot) "表示" else "非表示",
-            if (showRobot) orange else grayText) {
-            showRobot = !showRobot; prefs.edit().putBoolean("show_robot", showRobot).apply()
-            applyRobotVisibility()
-            if (showRobot) { enterSleepIfNeeded(); updateRobotFace() } else aiPopup?.dismiss()
+        card.addView(menuRow("ROBOT", if (robotActive) "起動" else "待機",
+            if (robotActive) orange else grayText) {
+            robotActive = !robotActive; prefs.edit().putBoolean("robot_active", robotActive).apply()
+            if (robotActive) {
+                // 起動：中央付近から漂い開始
+                robotX = (rootFrame.width - dp(robotSizeDp)) / 2f
+                robotY = rootFrame.height * 0.62f
+                robot.animate().cancel()
+                robot.x = robotX; robot.y = robotY
+                robotBusy = false; flying = false
+                if (charging) startCharging()
+                else { enterSleepIfNeeded(); updateRobotFace() }
+            } else {
+                aiPopup?.dismiss()
+                goStandby()
+            }
             dialog.dismiss(); showSettingsMenu()
         })
         card.addView(menuDivider())
