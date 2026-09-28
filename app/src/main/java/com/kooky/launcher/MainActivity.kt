@@ -51,8 +51,11 @@ import android.widget.GridView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupWindow
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import org.json.JSONArray
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
@@ -65,9 +68,8 @@ import kotlin.random.Random
 class MainActivity : Activity() {
 
     data class AppEntry(val label: String, val packageName: String, val icon: Drawable)
-    // カテゴリ内のアプリ（表示名 / パッケージ / ブラウザfallback）
     data class LinkApp(val name: String, val pkg: String, val url: String)
-    data class Category(val name: String, val apps: List<LinkApp>)
+    class Category(val name: String, val apps: MutableList<LinkApp>)
 
     private val apps = mutableListOf<AppEntry>()
     private val shown = mutableListOf<AppEntry>()
@@ -101,18 +103,20 @@ class MainActivity : Activity() {
 
     private val releasesUrl = "https://github.com/shinichitakebuchi-netizen/kooky-launcher/releases/latest"
 
-    // カテゴリ（固定：ステップ1）
-    private val categories = listOf(
-        Category("AI", listOf(
+    // カテゴリ（可変・保存対象）
+    private val categories = mutableListOf<Category>()
+
+    private fun defaultCategories(): MutableList<Category> = mutableListOf(
+        Category("AI", mutableListOf(
             LinkApp("Claude", "com.anthropic.claude", "https://claude.ai"),
             LinkApp("ChatGPT", "com.openai.chatgpt", "https://chatgpt.com"),
             LinkApp("Gemini", "com.google.android.apps.bard", "https://gemini.google.com")
         )),
-        Category("おさいふ", listOf(
+        Category("おさいふ", mutableListOf(
             LinkApp("d払い", "com.nttdocomo.keitai.payment", ""),
             LinkApp("楽天ペイ", "jp.co.rakuten.pay", "")
         )),
-        Category("仕事", listOf(
+        Category("仕事", mutableListOf(
             LinkApp("Chrome", "com.android.chrome", "https://www.google.com"),
             LinkApp("スプレッドシート", "com.google.android.apps.docs.editors.sheets", "https://docs.google.com/spreadsheets"),
             LinkApp("Gmail", "com.google.android.gm", "https://mail.google.com")
@@ -251,6 +255,7 @@ class MainActivity : Activity() {
         showLabels = prefs.getBoolean("show_labels", true)
         useDesignIcon = prefs.getBoolean("use_design_icon", true)
         showInitial = prefs.getBoolean("show_initial", true)
+        loadCategories()
 
         loadApps()
 
@@ -444,6 +449,53 @@ class MainActivity : Activity() {
             enterSleepIfNeeded()
             updateRobotFace()
         }
+    }
+
+    // ===== カテゴリの保存/読み込み =====
+    private fun loadCategories() {
+        categories.clear()
+        val json = prefs.getString("categories_json", null)
+        if (json == null) {
+            categories.addAll(defaultCategories())
+            saveCategories()
+            return
+        }
+        try {
+            val arr = JSONArray(json)
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val appsArr = o.getJSONArray("apps")
+                val list = mutableListOf<LinkApp>()
+                for (j in 0 until appsArr.length()) {
+                    val a = appsArr.getJSONObject(j)
+                    list.add(LinkApp(a.getString("name"), a.getString("pkg"), a.optString("url", "")))
+                }
+                categories.add(Category(o.getString("name"), list))
+            }
+            if (categories.isEmpty()) categories.addAll(defaultCategories())
+        } catch (e: Exception) {
+            categories.clear()
+            categories.addAll(defaultCategories())
+        }
+    }
+
+    private fun saveCategories() {
+        try {
+            val arr = JSONArray()
+            for (cat in categories) {
+                val o = JSONObject()
+                o.put("name", cat.name)
+                val appsArr = JSONArray()
+                for (a in cat.apps) {
+                    val ao = JSONObject()
+                    ao.put("name", a.name); ao.put("pkg", a.pkg); ao.put("url", a.url)
+                    appsArr.put(ao)
+                }
+                o.put("apps", appsArr)
+                arr.put(o)
+            }
+            prefs.edit().putString("categories_json", arr.toString()).apply()
+        } catch (e: Exception) {}
     }
 
     private fun goStandby() {
@@ -753,7 +805,6 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    // カテゴリ選択の吹き出し
     private fun showCategoryMenu() {
         val card = bubbleCard()
         card.addView(bubbleTitle(robotLines[Random.nextInt(robotLines.size)]))
@@ -766,22 +817,116 @@ class MainActivity : Activity() {
         showBubble(card)
     }
 
-    // カテゴリ内アプリの吹き出し（先頭に◁もどる）
     private fun showAppMenuInCategory(cat: Category) {
         val card = bubbleCard()
         card.addView(bubbleTitle(cat.name))
-        // ◁ もどる（オレンジ・左寄せ）
         card.addView(bubbleDivider())
         card.addView(bubbleRow("◁", "", orange, true) {
             showCategoryMenu()
         })
         for (app in cat.apps) {
             card.addView(bubbleDivider())
-            card.addView(bubbleRow(app.name, "▶", orange, false) {
+            val row = bubbleRow(app.name, "▶", orange, false) {
                 aiPopup?.dismiss(); openLinkApp(app)
-            })
+            }
+            // 長押しで削除
+            row.setOnLongClickListener {
+                confirmРemoveApp(cat, app)
+                true
+            }
+            card.addView(row)
         }
+        // ＋ アプリを追加
+        card.addView(bubbleDivider())
+        card.addView(bubbleRow("＋ アプリを追加", "", orange, true) {
+            showAddAppPicker(cat)
+        })
         showBubble(card)
+    }
+
+    private fun confirmРemoveApp(cat: Category, app: LinkApp) {
+        AlertDialog.Builder(this)
+            .setTitle("削除")
+            .setMessage("「${app.name}」を${cat.name}から削除しますか？")
+            .setPositiveButton("削除") { _, _ ->
+                cat.apps.remove(app)
+                saveCategories()
+                showAppMenuInCategory(cat)
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
+    }
+
+    // アプリ追加：全アプリ一覧（検索付き）
+    private fun showAddAppPicker(cat: Category) {
+        aiPopup?.dismiss()
+        val card = menuCard()
+        card.addView(menuTitle("${cat.name} に追加"))
+        card.addView(menuDivider())
+
+        val search = EditText(this).apply {
+            hint = "アプリを検索"
+            setHintTextColor(grayText)
+            setTextColor(Color.WHITE)
+            setSingleLine(true)
+            background = null
+            val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            lp.setMargins(dp(14), dp(4), dp(14), dp(4))
+            layoutParams = lp
+            setPadding(dp(4), dp(6), dp(4), dp(6))
+        }
+        card.addView(search)
+        card.addView(menuDivider())
+
+        val listContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val scroll = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(360))
+            addView(listContainer)
+        }
+        card.addView(scroll)
+
+        lateinit var dialog: AlertDialog
+
+        fun renderList(query: String) {
+            listContainer.removeAllViews()
+            val q = query.trim().lowercase()
+            val list = apps.filter { q.isEmpty() || it.label.lowercase().contains(q) }
+            for (a in list) {
+                val row = TextView(this).apply {
+                    text = a.label
+                    setTextColor(Color.WHITE)
+                    textSize = 14f
+                    setPadding(dp(16), dp(12), dp(16), dp(12))
+                    isClickable = true
+                    setOnClickListener {
+                        if (cat.apps.none { it.pkg == a.packageName }) {
+                            cat.apps.add(LinkApp(a.label, a.packageName, ""))
+                            saveCategories()
+                            Toast.makeText(this@MainActivity, "${a.label}を追加しました", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(this@MainActivity, "すでに追加済みです", Toast.LENGTH_SHORT).show()
+                        }
+                        dialog.dismiss()
+                        showAppMenuInCategory(cat)
+                    }
+                }
+                listContainer.addView(row)
+                listContainer.addView(View(this).apply {
+                    setBackgroundColor(divider)
+                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+                })
+            }
+        }
+        renderList("")
+        search.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) { renderList(s?.toString() ?: "") }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        })
+
+        dialog = AlertDialog.Builder(this).setView(card).create()
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        dialog.show()
     }
 
     private fun bubbleCard(): LinearLayout {
@@ -814,8 +959,7 @@ class MainActivity : Activity() {
         }
     }
 
-    // leftIcon=true のときは左端にオレンジのラベル（◁用）、右矢印なし
-    private fun bubbleRow(label: String, arrow: String, arrowColor: Int, leftAccent: Boolean, onClick: () -> Unit): View {
+    private fun bubbleRow(label: String, arrow: String, arrowColor: Int, leftAccent: Boolean, onClick: () -> Unit): LinearLayout {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -843,7 +987,7 @@ class MainActivity : Activity() {
     private fun showBubble(card: LinearLayout) {
         aiPopup?.dismiss()
         val popup = PopupWindow(card,
-            dp(200), ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
+            dp(210), ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
             isOutsideTouchable = true
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
         }
@@ -855,11 +999,11 @@ class MainActivity : Activity() {
         val robotTop = loc[1]
         val robotBottom = loc[1] + robot.height
         val half = rootFrame.height / 2
-        val popupW = dp(200)
+        val popupW = dp(210)
         val x = (robotCx - popupW / 2).coerceIn(dp(8), rootFrame.width - popupW - dp(8))
 
         if (robotTop > half) {
-            popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, x, robotTop - dp(200))
+            popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, x, robotTop - dp(240))
         } else {
             popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, x, robotBottom + dp(8))
         }
