@@ -65,6 +65,9 @@ import kotlin.random.Random
 class MainActivity : Activity() {
 
     data class AppEntry(val label: String, val packageName: String, val icon: Drawable)
+    // カテゴリ内のアプリ（表示名 / パッケージ / ブラウザfallback）
+    data class LinkApp(val name: String, val pkg: String, val url: String)
+    data class Category(val name: String, val apps: List<LinkApp>)
 
     private val apps = mutableListOf<AppEntry>()
     private val shown = mutableListOf<AppEntry>()
@@ -88,7 +91,7 @@ class MainActivity : Activity() {
     private val cornerR = 6
     private val robotSizeDp = 76
     private val idleTimeoutMs = 120_000L
-    private val fastChargeMa = 1500   // これ以上を急速充電とみなす
+    private val fastChargeMa = 1500
 
     private val cardBg = Color.parseColor("#1C1C22")
     private val cardBorder = Color.parseColor("#333333")
@@ -98,15 +101,27 @@ class MainActivity : Activity() {
 
     private val releasesUrl = "https://github.com/shinichitakebuchi-netizen/kooky-launcher/releases/latest"
 
-    private val aiList = listOf(
-        Triple("Claude", "com.anthropic.claude", "https://claude.ai"),
-        Triple("ChatGPT", "com.openai.chatgpt", "https://chatgpt.com"),
-        Triple("Gemini", "com.google.android.apps.bard", "https://gemini.google.com")
+    // カテゴリ（固定：ステップ1）
+    private val categories = listOf(
+        Category("AI", listOf(
+            LinkApp("Claude", "com.anthropic.claude", "https://claude.ai"),
+            LinkApp("ChatGPT", "com.openai.chatgpt", "https://chatgpt.com"),
+            LinkApp("Gemini", "com.google.android.apps.bard", "https://gemini.google.com")
+        )),
+        Category("おさいふ", listOf(
+            LinkApp("d払い", "com.nttdocomo.keitai.payment", ""),
+            LinkApp("楽天ペイ", "jp.co.rakuten.pay", "")
+        )),
+        Category("仕事", listOf(
+            LinkApp("Chrome", "com.android.chrome", "https://www.google.com"),
+            LinkApp("スプレッドシート", "com.google.android.apps.docs.editors.sheets", "https://docs.google.com/spreadsheets"),
+            LinkApp("Gmail", "com.google.android.gm", "https://mail.google.com")
+        ))
     )
 
     private val robotLines = listOf(
-        "どのAIにする？", "だれを呼ぶ？", "話したい相手は？",
-        "ぼくが繋ぐよ！", "今日はだれと話す？"
+        "どれにする？", "だれを呼ぶ？", "何をひらく？",
+        "ぼくにまかせて！", "どこにいく？"
     )
 
     private val fallbackLat = 36.389
@@ -171,7 +186,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // 充電モードを判定してStatusArcViewに反映（0=非充電/1=通常/2=急速）
     private fun updateChargeMode(isCharging: Boolean) {
         if (!isCharging) {
             statusArc.chargeMode = 0
@@ -180,18 +194,15 @@ class MainActivity : Activity() {
         }
         val ma = readChargeCurrentMa()
         val mode = if (ma >= fastChargeMa) 2 else 1
-        val changed = statusArc.chargeMode != mode
         statusArc.chargeMode = mode
-        if (changed || statusArc.chargeMode != 0) statusArc.startBlink()
+        statusArc.startBlink()
     }
 
-    // 充電電流(mA)を読む
     private fun readChargeCurrentMa(): Int {
         return try {
             val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
-            // CURRENT_NOW はµA単位で返る端末が多い（充電中は正、放電中は負）
             val now = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-            kotlin.math.abs(now) / 1000  // µA → mA
+            kotlin.math.abs(now) / 1000
         } catch (e: Exception) { 0 }
     }
 
@@ -220,7 +231,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // 充電中は電流を定期チェックして急速/通常を更新
     private val chargeTick = object : Runnable {
         override fun run() {
             if (charging) updateChargeMode(true)
@@ -738,15 +748,44 @@ class MainActivity : Activity() {
                 .setDuration(120).withEndAction {
                 robotBusy = false
                 updateRobotFace()
-                showAiSpeech()
+                showCategoryMenu()
             }.start()
         }.start()
     }
 
-    private fun showAiSpeech() {
-        aiPopup?.dismiss()
+    // カテゴリ選択の吹き出し
+    private fun showCategoryMenu() {
+        val card = bubbleCard()
+        card.addView(bubbleTitle(robotLines[Random.nextInt(robotLines.size)]))
+        for (cat in categories) {
+            card.addView(bubbleDivider())
+            card.addView(bubbleRow(cat.name, "›", orange, false) {
+                showAppMenuInCategory(cat)
+            })
+        }
+        showBubble(card)
+    }
 
-        val card = LinearLayout(this).apply {
+    // カテゴリ内アプリの吹き出し（先頭に◁もどる）
+    private fun showAppMenuInCategory(cat: Category) {
+        val card = bubbleCard()
+        card.addView(bubbleTitle(cat.name))
+        // ◁ もどる（オレンジ・左寄せ）
+        card.addView(bubbleDivider())
+        card.addView(bubbleRow("◁", "", orange, true) {
+            showCategoryMenu()
+        })
+        for (app in cat.apps) {
+            card.addView(bubbleDivider())
+            card.addView(bubbleRow(app.name, "▶", orange, false) {
+                aiPopup?.dismiss(); openLinkApp(app)
+            })
+        }
+        showBubble(card)
+    }
+
+    private fun bubbleCard(): LinearLayout {
+        return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
@@ -755,36 +794,56 @@ class MainActivity : Activity() {
                 setStroke(dp(1), orange)
             }
         }
-        card.addView(TextView(this).apply {
-            text = robotLines[Random.nextInt(robotLines.size)]
+    }
+
+    private fun bubbleTitle(text: String): TextView {
+        return TextView(this).apply {
+            this.text = text
             setTextColor(Color.WHITE)
             textSize = 13f
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
             setPadding(dp(16), dp(12), dp(16), dp(8))
-        })
-        for ((name, pkg, url) in aiList) {
-            card.addView(View(this).apply {
-                setBackgroundColor(divider)
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
-            })
-            card.addView(LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(11), dp(16), dp(11))
-                isClickable = true
-                setOnClickListener { aiPopup?.dismiss(); openApp(pkg, url) }
-                addView(TextView(this@MainActivity).apply {
-                    text = name; setTextColor(Color.WHITE); textSize = 14f
-                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                addView(TextView(this@MainActivity).apply {
-                    text = "›"; setTextColor(orange); textSize = 15f
-                })
-            })
         }
+    }
 
+    private fun bubbleDivider(): View {
+        return View(this).apply {
+            setBackgroundColor(divider)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+        }
+    }
+
+    // leftIcon=true のときは左端にオレンジのラベル（◁用）、右矢印なし
+    private fun bubbleRow(label: String, arrow: String, arrowColor: Int, leftAccent: Boolean, onClick: () -> Unit): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(11), dp(16), dp(11))
+            isClickable = true
+            setOnClickListener { onClick() }
+        }
+        val left = TextView(this).apply {
+            text = label
+            setTextColor(if (leftAccent) orange else Color.WHITE)
+            textSize = if (leftAccent) 16f else 14f
+            setTypeface(typeface, if (leftAccent) Typeface.BOLD else Typeface.NORMAL)
+        }
+        row.addView(left, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        if (arrow.isNotEmpty()) {
+            val right = TextView(this).apply {
+                text = arrow; setTextColor(arrowColor); textSize = 14f
+            }
+            row.addView(right, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        return row
+    }
+
+    private fun showBubble(card: LinearLayout) {
+        aiPopup?.dismiss()
         val popup = PopupWindow(card,
-            dp(190), ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
+            dp(200), ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
             isOutsideTouchable = true
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
         }
@@ -796,30 +855,32 @@ class MainActivity : Activity() {
         val robotTop = loc[1]
         val robotBottom = loc[1] + robot.height
         val half = rootFrame.height / 2
-        val popupW = dp(190)
+        val popupW = dp(200)
         val x = (robotCx - popupW / 2).coerceIn(dp(8), rootFrame.width - popupW - dp(8))
 
         if (robotTop > half) {
-            popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, x, robotTop - dp(150))
+            popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, x, robotTop - dp(200))
         } else {
             popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, x, robotBottom + dp(8))
         }
     }
 
-    private fun openApp(pkg: String, url: String) {
+    private fun openLinkApp(app: LinkApp) {
         try {
-            val intent = packageManager.getLaunchIntentForPackage(pkg)
+            val intent = packageManager.getLaunchIntentForPackage(app.pkg)
             if (intent != null) {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 startActivity(intent); return
             }
         } catch (e: Exception) {}
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (e: Exception) {
-            Toast.makeText(this, "開けませんでした", Toast.LENGTH_SHORT).show()
+        if (app.url.isNotEmpty()) {
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(app.url))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return
+            } catch (e: Exception) {}
         }
+        Toast.makeText(this, "${app.name}を開けませんでした", Toast.LENGTH_SHORT).show()
     }
 
     private fun toggleTorch() {
@@ -1241,7 +1302,6 @@ class MainActivity : Activity() {
     }
 
     private fun showClockDiagnostics() {
-        val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
         val ma = readChargeCurrentMa()
         Toast.makeText(this, "充電電流: ${ma}mA（1500以上=急速）", Toast.LENGTH_LONG).show()
     }
