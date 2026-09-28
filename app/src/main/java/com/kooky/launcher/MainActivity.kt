@@ -168,6 +168,7 @@ class MainActivity : Activity() {
     private var talking = false
     private var talkAnchorX = 0f
     private var talkAnchorY = 0f
+    private var switchingBubble = false
 
     private var torchOn = false
     private var cameraManager: CameraManager? = null
@@ -794,7 +795,6 @@ class MainActivity : Activity() {
     private fun onRobotTap() {
         if (sleeping && isSleepTime()) { wakeUp(); return }
         if (flying) return
-        // 喋る状態へ：ロボを左下へ移動 → 移動後に窓を出す
         talking = true
         robotBusy = false
         flying = false
@@ -807,7 +807,6 @@ class MainActivity : Activity() {
         talkAnchorY = (rootFrame.height - size - dp(120)).toFloat()
         robotX = talkAnchorX
         robotY = talkAnchorY
-        // 左下へスーッと移動 → 着いたら窓を出す
         robot.animate().x(talkAnchorX).y(talkAnchorY).setDuration(350).withEndAction {
             robot.x = talkAnchorX
             robot.y = talkAnchorY
@@ -916,7 +915,9 @@ class MainActivity : Activity() {
     }
 
     private fun showAddAppPicker(cat: Category) {
+        switchingBubble = true
         aiPopup?.dismiss()
+        switchingBubble = false
         val card = menuCard()
         card.addView(menuTitle("${cat.name} に追加"))
         card.addView(menuDivider())
@@ -983,9 +984,6 @@ class MainActivity : Activity() {
 
         dialog = AlertDialog.Builder(this).setView(card).create()
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
-        dialog.setOnDismissListener {
-            // ピッカーを閉じたら喋りも終了扱い（窓に戻る場合を除き、ここでは何もしない）
-        }
         dialog.show()
     }
 
@@ -1086,14 +1084,17 @@ class MainActivity : Activity() {
         return bar
     }
 
-    // 窓をロボの右上に固定して出す（ロボの位置は触らない＝動かない）
+    // 窓をロボの右上に固定（ロボは触らない・切り替えdismissではstopTalkingしない）
     private fun showBubble(card: LinearLayout) {
+        switchingBubble = true
         aiPopup?.dismiss()
+        switchingBubble = false
+
         val popupW = dp(210)
         val popup = PopupWindow(card, popupW, ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
             isOutsideTouchable = true
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
-            setOnDismissListener { stopTalking() }
+            setOnDismissListener { if (!switchingBubble) stopTalking() }
         }
         aiPopup = popup
 
@@ -1102,9 +1103,6 @@ class MainActivity : Activity() {
         val rootTop = loc[1]
         val size = dp(robotSizeDp)
 
-        // ★ロボの位置は一切触らない（talkAnchorに固定済みなのでそのまま）
-
-        // 窓＝ロボの右上：X はロボの右側、Y はロボより上
         var winX = (talkAnchorX + size - dp(8)).toInt()
         winX = winX.coerceIn(dp(8), rootFrame.width - popupW - dp(8))
         var winY = (talkAnchorY - dp(210)).toInt()
@@ -1112,7 +1110,6 @@ class MainActivity : Activity() {
 
         popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, winX, rootTop + winY)
     }
-
 
     private fun openLinkApp(app: LinkApp) {
         aiPopup?.dismiss()
@@ -1185,7 +1182,7 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(robotAnim)
         timeHandler.post(robotAnim)
         lastInteractMs = System.currentTimeMillis()
-        if (talking) { talking = false; aiPopup?.dismiss() }
+        if (talking) { switchingBubble = true; aiPopup?.dismiss(); switchingBubble = false; talking = false }
         if (standby) {
             robot.post { goStandby() }
         } else {
@@ -1202,7 +1199,9 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(chargeTick)
         timeHandler.removeCallbacks(robotAnim)
         statusArc.stopBlink()
+        switchingBubble = true
         aiPopup?.dismiss()
+        switchingBubble = false
         if (torchOn) {
             try { torchCameraId?.let { cameraManager?.setTorchMode(it, false) } } catch (e: Exception) {}
             torchOn = false
