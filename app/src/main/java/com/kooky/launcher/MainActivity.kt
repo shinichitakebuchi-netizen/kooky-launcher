@@ -69,7 +69,7 @@ class MainActivity : Activity() {
 
     data class AppEntry(val label: String, val packageName: String, val icon: Drawable)
     data class LinkApp(val name: String, val pkg: String, val url: String)
-    class Category(val name: String, val apps: MutableList<LinkApp>)
+    class Category(var name: String, val apps: MutableList<LinkApp>)
 
     private val apps = mutableListOf<AppEntry>()
     private val shown = mutableListOf<AppEntry>()
@@ -103,7 +103,6 @@ class MainActivity : Activity() {
 
     private val releasesUrl = "https://github.com/shinichitakebuchi-netizen/kooky-launcher/releases/latest"
 
-    // カテゴリ（可変・保存対象）
     private val categories = mutableListOf<Category>()
 
     private fun defaultCategories(): MutableList<Category> = mutableListOf(
@@ -451,7 +450,6 @@ class MainActivity : Activity() {
         }
     }
 
-    // ===== カテゴリの保存/読み込み =====
     private fun loadCategories() {
         categories.clear()
         val json = prefs.getString("categories_json", null)
@@ -810,41 +808,81 @@ class MainActivity : Activity() {
         card.addView(bubbleTitle(robotLines[Random.nextInt(robotLines.size)]))
         for (cat in categories) {
             card.addView(bubbleDivider())
-            card.addView(bubbleRow(cat.name, "›", orange, false) {
+            val row = bubbleRow(cat.name, "›", orange, false) {
                 showAppMenuInCategory(cat)
-            })
+            }
+            row.setOnLongClickListener { editCategory(cat); true }
+            card.addView(row)
         }
+        // ＋（右揃え・カテゴリ追加）
+        card.addView(bubbleDivider())
+        card.addView(bubblePlusRight { addCategory() })
         showBubble(card)
+    }
+
+    private fun addCategory() {
+        val input = EditText(this).apply {
+            hint = "カテゴリ名"; setHintTextColor(grayText); setTextColor(Color.WHITE); setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("カテゴリを追加")
+            .setView(input)
+            .setPositiveButton("追加") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    categories.add(Category(name, mutableListOf()))
+                    saveCategories()
+                    showCategoryMenu()
+                }
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
+    }
+
+    private fun editCategory(cat: Category) {
+        val input = EditText(this).apply {
+            setText(cat.name); setTextColor(Color.WHITE); setSingleLine(true)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("カテゴリを編集")
+            .setView(input)
+            .setPositiveButton("保存") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isNotEmpty()) { cat.name = name; saveCategories() }
+                showCategoryMenu()
+            }
+            .setNeutralButton("削除") { _, _ ->
+                AlertDialog.Builder(this)
+                    .setTitle("削除")
+                    .setMessage("「${cat.name}」を削除しますか？")
+                    .setPositiveButton("削除") { _, _ ->
+                        categories.remove(cat); saveCategories(); showCategoryMenu()
+                    }
+                    .setNegativeButton("キャンセル") { _, _ -> showCategoryMenu() }
+                    .show()
+            }
+            .setNegativeButton("キャンセル", null)
+            .show()
     }
 
     private fun showAppMenuInCategory(cat: Category) {
         val card = bubbleCard()
         card.addView(bubbleTitle(cat.name))
+        // ◁（左） ＋（右）を1行に
         card.addView(bubbleDivider())
-        card.addView(bubbleRow("◁", "", orange, true) {
-            showCategoryMenu()
-        })
+        card.addView(bubbleBackAddBar({ showCategoryMenu() }, { showAddAppPicker(cat) }))
         for (app in cat.apps) {
             card.addView(bubbleDivider())
             val row = bubbleRow(app.name, "▶", orange, false) {
                 aiPopup?.dismiss(); openLinkApp(app)
             }
-            // 長押しで削除
-            row.setOnLongClickListener {
-                confirmРemoveApp(cat, app)
-                true
-            }
+            row.setOnLongClickListener { confirmRemoveApp(cat, app); true }
             card.addView(row)
         }
-        // ＋ アプリを追加
-        card.addView(bubbleDivider())
-        card.addView(bubbleRow("＋ アプリを追加", "", orange, true) {
-            showAddAppPicker(cat)
-        })
         showBubble(card)
     }
 
-    private fun confirmРemoveApp(cat: Category, app: LinkApp) {
+    private fun confirmRemoveApp(cat: Category, app: LinkApp) {
         AlertDialog.Builder(this)
             .setTitle("削除")
             .setMessage("「${app.name}」を${cat.name}から削除しますか？")
@@ -857,7 +895,6 @@ class MainActivity : Activity() {
             .show()
     }
 
-    // アプリ追加：全アプリ一覧（検索付き）
     private fun showAddAppPicker(cat: Category) {
         aiPopup?.dismiss()
         val card = menuCard()
@@ -982,6 +1019,50 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
         return row
+    }
+
+    // ◁（左）＋（右）を1行に
+    private fun bubbleBackAddBar(onBack: () -> Unit, onAdd: () -> Unit): LinearLayout {
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+        }
+        val back = TextView(this).apply {
+            text = "◁"; setTextColor(orange); textSize = 17f
+            setTypeface(typeface, Typeface.BOLD)
+            isClickable = true; setOnClickListener { onBack() }
+        }
+        val add = TextView(this).apply {
+            text = "＋"; setTextColor(orange); textSize = 18f
+            setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.END
+            isClickable = true; setOnClickListener { onAdd() }
+        }
+        bar.addView(back, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        bar.addView(add, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        return bar
+    }
+
+    // ＋を右揃え（カテゴリ追加）
+    private fun bubblePlusRight(onAdd: () -> Unit): LinearLayout {
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+        }
+        val spacer = View(this)
+        val add = TextView(this).apply {
+            text = "＋"; setTextColor(orange); textSize = 18f
+            setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.END
+            isClickable = true; setOnClickListener { onAdd() }
+        }
+        bar.addView(spacer, LinearLayout.LayoutParams(0, dp(1), 1f))
+        bar.addView(add, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        return bar
     }
 
     private fun showBubble(card: LinearLayout) {
