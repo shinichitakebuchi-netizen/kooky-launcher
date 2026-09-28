@@ -165,7 +165,6 @@ class MainActivity : Activity() {
     private var standby = false
     private var lastInteractMs = 0L
 
-    // 窓を開いてロボが喋ってる状態（この間ロボは静止）
     private var talking = false
     private var talkAnchorX = 0f
     private var talkAnchorY = 0f
@@ -599,7 +598,7 @@ class MainActivity : Activity() {
     }
 
     private fun animateRobot() {
-        if (talking) return   // 窓を開いてる間は静止
+        if (talking) return
 
         if (!standby && !charging && !sleeping &&
             System.currentTimeMillis() - lastInteractMs > idleTimeoutMs) {
@@ -718,6 +717,7 @@ class MainActivity : Activity() {
 
     private fun updateRobotFace() {
         if (standby) { robot.setImageResource(R.drawable.robot_standby); return }
+        if (talking) return
         if (flying) return
         isShowingQuestion = false
         if (charging && chargingParked) { robot.setImageResource(R.drawable.robot_charging); return }
@@ -727,7 +727,7 @@ class MainActivity : Activity() {
     }
 
     private fun randomFace() {
-        if (sleeping || charging || flying || standby) return
+        if (sleeping || charging || flying || standby || talking) return
         val faces = intArrayOf(
             R.drawable.robot_normal, R.drawable.robot_wink,
             R.drawable.robot_question, R.drawable.robot_hello,
@@ -741,7 +741,7 @@ class MainActivity : Activity() {
     }
 
     private fun restPause() {
-        if (robotBusy || sleeping || charging || flying || standby) return
+        if (robotBusy || sleeping || charging || flying || standby || talking) return
         robotBusy = true
         isShowingQuestion = true
         robot.setImageResource(R.drawable.robot_question)
@@ -753,7 +753,7 @@ class MainActivity : Activity() {
     }
 
     private fun startDash() {
-        if (robotBusy || sleeping || flying || charging || standby) return
+        if (robotBusy || sleeping || flying || charging || standby || talking) return
         robotBusy = true
         isShowingQuestion = false
         val w = rootFrame.width
@@ -794,37 +794,31 @@ class MainActivity : Activity() {
     private fun onRobotTap() {
         if (sleeping && isSleepTime()) { wakeUp(); return }
         if (flying) return
-        // 窓を開く＝喋る状態へ。ロボを止めて位置を固定
-        startTalking()
-        robot.setImageResource(R.drawable.robot_happy)
-        applyFacing()
-        showCategoryMenu()
-    }
-
-    // 喋る状態に入る：ロボを止めて、窓のアンカー位置を確定
-    private fun startTalking() {
+        // 喋る状態へ：ロボを左下へ移動 → 移動後に窓を出す
         talking = true
         robotBusy = false
         flying = false
         robot.animate().cancel()
-        // ロボの現在位置を確定（回転・傾きはリセットして正面向きに）
-        robotX = robot.x
-        robotY = robot.y
-        robot.rotation = 0f
-        robot.rotationY = 0f
-        robot.scaleX = 1f
-        robot.scaleY = 1f
-        // 窓のアンカー：ロボの位置を基準に1回だけ決める
-        talkAnchorX = robotX
-        talkAnchorY = robotY
+        robot.rotation = 0f; robot.rotationY = 0f
+        robot.scaleX = 1f; robot.scaleY = 1f
+        robot.setImageResource(R.drawable.robot_happy)
+        val size = dp(robotSizeDp)
+        talkAnchorX = dp(16).toFloat()
+        talkAnchorY = (rootFrame.height - size - dp(120)).toFloat()
+        robotX = talkAnchorX
+        robotY = talkAnchorY
+        // 左下へスーッと移動 → 着いたら窓を出す
+        robot.animate().x(talkAnchorX).y(talkAnchorY).setDuration(350).withEndAction {
+            robot.x = talkAnchorX
+            robot.y = talkAnchorY
+            showCategoryMenu()
+        }.start()
     }
 
     private fun stopTalking() {
         if (!talking) return
         talking = false
-        aiPopup?.dismiss()
         lastInteractMs = System.currentTimeMillis()
-        // 再び動き出す
         robotVX = if (Random.nextBoolean()) 1.8f else -1.8f
         robotVY = if (Random.nextBoolean()) 1.4f else -1.4f
         if (charging) startCharging()
@@ -989,6 +983,9 @@ class MainActivity : Activity() {
 
         dialog = AlertDialog.Builder(this).setView(card).create()
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        dialog.setOnDismissListener {
+            // ピッカーを閉じたら喋りも終了扱い（窓に戻る場合を除き、ここでは何もしない）
+        }
         dialog.show()
     }
 
@@ -1089,7 +1086,7 @@ class MainActivity : Activity() {
         return bar
     }
 
-    // 窓を「固定アンカー位置」に出す（ロボの左下にくっつく＝窓はロボの上）
+    // 窓をロボの右上に固定して出す（ロボ左下・窓右上）
     private fun showBubble(card: LinearLayout) {
         aiPopup?.dismiss()
         val popupW = dp(210)
@@ -1105,20 +1102,16 @@ class MainActivity : Activity() {
         val rootTop = loc[1]
         val size = dp(robotSizeDp)
 
-        // ロボ＝アンカー位置（窓の左下に来るように、窓はロボの上に固定）
-        // ロボを窓の左下へ配置：窓の左端付近＝ロボの左端、窓の下＝ロボの上端
-        val anchorX = talkAnchorX.coerceIn(dp(8).toFloat(), (rootFrame.width - size - dp(8)).toFloat())
-        // 窓のX：ロボの左端に合わせる（少し左に寄せる）
-        var winX = anchorX.toInt() - dp(6)
-        winX = winX.coerceIn(dp(8), rootFrame.width - popupW - dp(8))
-        // 窓のY：ロボの上に置く（窓の高さぶん上）。画面上部からはみ出さないよう調整
-        val winYguess = (talkAnchorY - dp(230)).toInt()
-        val winY = winYguess.coerceAtLeast(dp(8))
-
-        // ロボを窓の左下へ移動（アンカー位置に静止）
+        // ロボは左下に固定（毎回同じ位置に留める）
         robot.animate().cancel()
-        robot.x = anchorX
+        robot.x = talkAnchorX
         robot.y = talkAnchorY
+
+        // 窓＝ロボの右上：X はロボの右側、Y はロボより上
+        var winX = (talkAnchorX + size - dp(8)).toInt()
+        winX = winX.coerceIn(dp(8), rootFrame.width - popupW - dp(8))
+        var winY = (talkAnchorY - dp(210)).toInt()
+        winY = winY.coerceAtLeast(dp(8))
 
         popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, winX, rootTop + winY)
     }
