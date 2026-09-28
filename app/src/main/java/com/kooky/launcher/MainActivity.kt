@@ -165,6 +165,11 @@ class MainActivity : Activity() {
     private var standby = false
     private var lastInteractMs = 0L
 
+    // 窓を開いてロボが喋ってる状態（この間ロボは静止）
+    private var talking = false
+    private var talkAnchorX = 0f
+    private var talkAnchorY = 0f
+
     private var torchOn = false
     private var cameraManager: CameraManager? = null
     private var torchCameraId: String? = null
@@ -182,7 +187,7 @@ class MainActivity : Activity() {
             updateChargeMode(isCharging)
             if (isCharging != charging) {
                 charging = isCharging
-                if (!standby) {
+                if (!standby && !talking) {
                     if (charging) startCharging() else stopCharging()
                 }
             }
@@ -560,7 +565,7 @@ class MainActivity : Activity() {
     }
 
     private fun startCharging() {
-        if (standby) return
+        if (standby || talking) return
         sleeping = false
         flying = false
         robotBusy = true
@@ -587,13 +592,15 @@ class MainActivity : Activity() {
     private fun stopCharging() {
         chargingParked = false
         robotBusy = false
-        if (standby) return
+        if (standby || talking) return
         if (isSleepTime()) { enterSleepIfNeeded() }
         updateRobotFace()
         robotVX = -1.8f; robotVY = 1.4f
     }
 
     private fun animateRobot() {
+        if (talking) return   // 窓を開いてる間は静止
+
         if (!standby && !charging && !sleeping &&
             System.currentTimeMillis() - lastInteractMs > idleTimeoutMs) {
             goStandby()
@@ -787,20 +794,41 @@ class MainActivity : Activity() {
     private fun onRobotTap() {
         if (sleeping && isSleepTime()) { wakeUp(); return }
         if (flying) return
-        robotBusy = true
-        isShowingQuestion = false
+        // 窓を開く＝喋る状態へ。ロボを止めて位置を固定
+        startTalking()
         robot.setImageResource(R.drawable.robot_happy)
         applyFacing()
-        val baseScale = kotlin.math.abs(robot.scaleX)
-        robot.animate().scaleX(if (facingLeft) -(baseScale + 0.2f) else baseScale + 0.2f)
-            .scaleY(baseScale + 0.2f).setDuration(120).withEndAction {
-            robot.animate().scaleX(if (facingLeft) -baseScale else baseScale).scaleY(baseScale)
-                .setDuration(120).withEndAction {
-                robotBusy = false
-                updateRobotFace()
-                showCategoryMenu()
-            }.start()
-        }.start()
+        showCategoryMenu()
+    }
+
+    // 喋る状態に入る：ロボを止めて、窓のアンカー位置を確定
+    private fun startTalking() {
+        talking = true
+        robotBusy = false
+        flying = false
+        robot.animate().cancel()
+        // ロボの現在位置を確定（回転・傾きはリセットして正面向きに）
+        robotX = robot.x
+        robotY = robot.y
+        robot.rotation = 0f
+        robot.rotationY = 0f
+        robot.scaleX = 1f
+        robot.scaleY = 1f
+        // 窓のアンカー：ロボの位置を基準に1回だけ決める
+        talkAnchorX = robotX
+        talkAnchorY = robotY
+    }
+
+    private fun stopTalking() {
+        if (!talking) return
+        talking = false
+        aiPopup?.dismiss()
+        lastInteractMs = System.currentTimeMillis()
+        // 再び動き出す
+        robotVX = if (Random.nextBoolean()) 1.8f else -1.8f
+        robotVY = if (Random.nextBoolean()) 1.4f else -1.4f
+        if (charging) startCharging()
+        else { enterSleepIfNeeded(); updateRobotFace() }
     }
 
     private fun showCategoryMenu() {
@@ -814,7 +842,6 @@ class MainActivity : Activity() {
             row.setOnLongClickListener { editCategory(cat); true }
             card.addView(row)
         }
-        // ＋（右揃え・カテゴリ追加）
         card.addView(bubbleDivider())
         card.addView(bubblePlusRight { addCategory() })
         showBubble(card)
@@ -868,13 +895,12 @@ class MainActivity : Activity() {
     private fun showAppMenuInCategory(cat: Category) {
         val card = bubbleCard()
         card.addView(bubbleTitle(cat.name))
-        // ◁（左） ＋（右）を1行に
         card.addView(bubbleDivider())
         card.addView(bubbleBackAddBar({ showCategoryMenu() }, { showAddAppPicker(cat) }))
         for (app in cat.apps) {
             card.addView(bubbleDivider())
             val row = bubbleRow(app.name, "▶", orange, false) {
-                aiPopup?.dismiss(); openLinkApp(app)
+                openLinkApp(app)
             }
             row.setOnLongClickListener { confirmRemoveApp(cat, app); true }
             card.addView(row)
@@ -1021,7 +1047,6 @@ class MainActivity : Activity() {
         return row
     }
 
-    // ◁（左）＋（右）を1行に
     private fun bubbleBackAddBar(onBack: () -> Unit, onAdd: () -> Unit): LinearLayout {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1045,7 +1070,6 @@ class MainActivity : Activity() {
         return bar
     }
 
-    // ＋を右揃え（カテゴリ追加）
     private fun bubblePlusRight(onAdd: () -> Unit): LinearLayout {
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1065,32 +1089,42 @@ class MainActivity : Activity() {
         return bar
     }
 
+    // 窓を「固定アンカー位置」に出す（ロボの左下にくっつく＝窓はロボの上）
     private fun showBubble(card: LinearLayout) {
         aiPopup?.dismiss()
-        val popup = PopupWindow(card,
-            dp(210), ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
+        val popupW = dp(210)
+        val popup = PopupWindow(card, popupW, ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
             isOutsideTouchable = true
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            setOnDismissListener { stopTalking() }
         }
         aiPopup = popup
 
         val loc = IntArray(2)
-        robot.getLocationInWindow(loc)
-        val robotCx = loc[0] + robot.width / 2
-        val robotTop = loc[1]
-        val robotBottom = loc[1] + robot.height
-        val half = rootFrame.height / 2
-        val popupW = dp(210)
-        val x = (robotCx - popupW / 2).coerceIn(dp(8), rootFrame.width - popupW - dp(8))
+        rootFrame.getLocationInWindow(loc)
+        val rootTop = loc[1]
+        val size = dp(robotSizeDp)
 
-        if (robotTop > half) {
-            popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, x, robotTop - dp(240))
-        } else {
-            popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, x, robotBottom + dp(8))
-        }
+        // ロボ＝アンカー位置（窓の左下に来るように、窓はロボの上に固定）
+        // ロボを窓の左下へ配置：窓の左端付近＝ロボの左端、窓の下＝ロボの上端
+        val anchorX = talkAnchorX.coerceIn(dp(8).toFloat(), (rootFrame.width - size - dp(8)).toFloat())
+        // 窓のX：ロボの左端に合わせる（少し左に寄せる）
+        var winX = anchorX.toInt() - dp(6)
+        winX = winX.coerceIn(dp(8), rootFrame.width - popupW - dp(8))
+        // 窓のY：ロボの上に置く（窓の高さぶん上）。画面上部からはみ出さないよう調整
+        val winYguess = (talkAnchorY - dp(230)).toInt()
+        val winY = winYguess.coerceAtLeast(dp(8))
+
+        // ロボを窓の左下へ移動（アンカー位置に静止）
+        robot.animate().cancel()
+        robot.x = anchorX
+        robot.y = talkAnchorY
+
+        popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, winX, rootTop + winY)
     }
 
     private fun openLinkApp(app: LinkApp) {
+        aiPopup?.dismiss()
         try {
             val intent = packageManager.getLaunchIntentForPackage(app.pkg)
             if (intent != null) {
@@ -1117,7 +1151,7 @@ class MainActivity : Activity() {
         try {
             torchOn = !torchOn
             cameraManager?.setTorchMode(id, torchOn)
-            if (!charging && !flying && !standby) {
+            if (!charging && !flying && !standby && !talking) {
                 robot.setImageResource(if (torchOn) R.drawable.robot_happy else R.drawable.robot_normal)
                 applyFacing()
                 if (!torchOn) timeHandler.postDelayed({ updateRobotFace() }, 600)
@@ -1160,6 +1194,7 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(robotAnim)
         timeHandler.post(robotAnim)
         lastInteractMs = System.currentTimeMillis()
+        if (talking) { talking = false; aiPopup?.dismiss() }
         if (standby) {
             robot.post { goStandby() }
         } else {
