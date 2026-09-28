@@ -1086,7 +1086,7 @@ class MainActivity : Activity() {
         return bar
     }
 
-    // 窓をロボの右上に固定して出す（ロボ左下・窓右上）
+    // 窓をロボの右上に固定して出す（ロボの位置は触らない＝動かない）
     private fun showBubble(card: LinearLayout) {
         aiPopup?.dismiss()
         val popupW = dp(210)
@@ -1102,10 +1102,7 @@ class MainActivity : Activity() {
         val rootTop = loc[1]
         val size = dp(robotSizeDp)
 
-        // ロボは左下に固定（毎回同じ位置に留める）
-        robot.animate().cancel()
-        robot.x = talkAnchorX
-        robot.y = talkAnchorY
+        // ★ロボの位置は一切触らない（talkAnchorに固定済みなのでそのまま）
 
         // 窓＝ロボの右上：X はロボの右側、Y はロボより上
         var winX = (talkAnchorX + size - dp(8)).toInt()
@@ -1115,6 +1112,7 @@ class MainActivity : Activity() {
 
         popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, winX, rootTop + winY)
     }
+
 
     private fun openLinkApp(app: LinkApp) {
         aiPopup?.dismiss()
