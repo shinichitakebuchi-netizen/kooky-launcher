@@ -21,11 +21,16 @@ class StatusArcView(context: Context) : View(context) {
     // 充電状態：0=非充電 / 1=通常充電(緑) / 2=急速充電(赤)
     var chargeMode: Int = 0
         set(value) { field = value; invalidate() }
+    // ライトモード：背景弧・低残量色・OFF色を明るい背景向けに
+    var lightMode: Boolean = false
+        set(value) { field = value; invalidate() }
 
     private val orange = Color.parseColor("#FF8C00")
     private val green = Color.parseColor("#4CD964")
     private val red = Color.parseColor("#FF3B30")
-    private val gray = Color.parseColor("#666666")
+    private val grayDark = Color.parseColor("#666666")
+    private val grayLight = Color.parseColor("#AEAEB2")
+    private val ink = Color.parseColor("#1C1C1E")
     private val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val dot = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -63,16 +68,18 @@ class StatusArcView(context: Context) : View(context) {
         val cy = height / 2f
         val u = minOf(width, height).toFloat()
         val r = u * 0.40f
+        val gray = if (lightMode) grayLight else grayDark
+        val lowColor = if (lightMode) ink else Color.WHITE
 
         val start = 135f; val sweep = 270f
         arc.strokeWidth = u * 0.05f
         val rect = RectF(cx - r, cy - r, cx + r, cy + r)
 
         // バッテリー背景弧
-        arc.color = Color.parseColor("#33FFFFFF")
+        arc.color = if (lightMode) Color.parseColor("#1F000000") else Color.parseColor("#33FFFFFF")
         canvas.drawArc(rect, start, sweep, false, arc)
 
-        // 残量弧の色：充電中は緑/赤（点滅）、通常はオレンジ（20%以下で白）
+        // 残量弧の色：充電中は緑/赤（点滅）、通常はオレンジ（20%以下で白／ライトは黒）
         val chargeColor = when (chargeMode) {
             1 -> green
             2 -> red
@@ -82,7 +89,7 @@ class StatusArcView(context: Context) : View(context) {
             arc.color = chargeColor
             arc.alpha = (blinkAlpha * 255).toInt().coerceIn(0, 255)
         } else {
-            arc.color = if (ratio <= 0.2f) Color.WHITE else orange
+            arc.color = if (ratio <= 0.2f) lowColor else orange
             arc.alpha = 255
         }
         canvas.drawArc(rect, start, sweep * ratio, false, arc)
@@ -94,7 +101,7 @@ class StatusArcView(context: Context) : View(context) {
         } else if (showBatteryNumber) {
             val pct = (ratio * 100).toInt().toString()
             textPaint.textSize = u * 0.42f
-            textPaint.color = if (ratio <= 0.2f) Color.WHITE else orange
+            textPaint.color = if (ratio <= 0.2f) lowColor else orange
             val ty = cy - (textPaint.descent() + textPaint.ascent()) / 2f
             canvas.drawText(pct, cx, ty, textPaint)
         } else {

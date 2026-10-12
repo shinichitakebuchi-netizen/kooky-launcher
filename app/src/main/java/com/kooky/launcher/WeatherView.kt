@@ -15,9 +15,14 @@ class WeatherView(context: Context) : View(context) {
     // 0=はれ 1=くもり 2=あめ 3=かみなり 4=ゆき 5=はれのよる
     var weatherType: Int = 0
         set(value) { field = value; invalidate() }
+    // ライトモード：白い雲・雪・星をグレーに、光条をオレンジに
+    var lightMode: Boolean = false
+        set(value) { field = value; invalidate() }
 
     private val orange = Color.parseColor("#FF8C00")
     private val blue = Color.parseColor("#4AA3FF")
+    private val lightMain = Color.parseColor("#A1A1A6")
+    private val lightSoft = Color.parseColor("#D1D1D6")
 
     private var t = 0f
     private val white = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
@@ -54,6 +59,8 @@ class WeatherView(context: Context) : View(context) {
         val cx = w / 2f
         val cy = h / 2f
         val u = minOf(w, h)
+        white.color = if (lightMode) lightMain else Color.WHITE
+        soft.color = if (lightMode) lightSoft else Color.parseColor("#CCCCCC")
         when (weatherType) {
             0 -> drawSun(canvas, cx, cy, u)
             1 -> drawCloud(canvas, cx, cy, u)
@@ -71,8 +78,8 @@ class WeatherView(context: Context) : View(context) {
             shader = RadialGradient(cx, cy, r, Color.parseColor("#FFB84D"), orange, Shader.TileMode.CLAMP)
         }
         canvas.drawCircle(cx, cy, r, body)
-        // 光条＝白
-        stroke.color = Color.WHITE
+        // 光条＝白（ライトモードはオレンジ）
+        stroke.color = if (lightMode) orange else Color.WHITE
         stroke.strokeWidth = u * 0.03f
         val breathe = (Math.sin(t.toDouble()) * u * 0.02f).toFloat()
         val inner = r + u * 0.06f + breathe

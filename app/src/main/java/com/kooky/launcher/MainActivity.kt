@@ -83,6 +83,8 @@ class MainActivity : Activity() {
     private lateinit var statusArc: StatusArcView
     private lateinit var robot: ImageView
     private lateinit var rootFrame: FrameLayout
+    private lateinit var contentLayout: LinearLayout
+    private lateinit var searchIcon: ImageView
 
     private val gridColumns = 4
     private val appsTopPadDp = 4
@@ -95,11 +97,19 @@ class MainActivity : Activity() {
     private val idleTimeoutMs = 120_000L
     private val fastChargeMa = 1500
 
-    private val cardBg = Color.parseColor("#1C1C22")
-    private val cardBorder = Color.parseColor("#333333")
-    private val divider = Color.parseColor("#2A2A30")
+    // テーマ：0=ダーク / 1=ライト / 2=オート(6:00〜21:00ライト)
+    private var themeMode = 0
+    private var isLight = false
+
     private val orange = Color.parseColor("#FF8C00")
-    private val grayText = Color.parseColor("#666666")
+    private val bgColor get() = if (isLight) Color.parseColor("#F5F5F7") else Color.BLACK
+    private val textColor get() = if (isLight) Color.parseColor("#1C1C1E") else Color.WHITE
+    private val subText get() = if (isLight) Color.parseColor("#6E6E73") else Color.parseColor("#CCCCCC")
+    private val cardBg get() = if (isLight) Color.WHITE else Color.parseColor("#1C1C22")
+    private val cardBorder get() = if (isLight) Color.parseColor("#D1D1D6") else Color.parseColor("#333333")
+    private val divider get() = if (isLight) Color.parseColor("#E5E5EA") else Color.parseColor("#2A2A30")
+    private val grayText get() = if (isLight) Color.parseColor("#8E8E93") else Color.parseColor("#666666")
+    private val iconFill get() = if (isLight) Color.WHITE else Color.BLACK
 
     private val releasesUrl = "https://github.com/shinichitakebuchi-netizen/kooky-launcher/releases/latest"
 
@@ -228,6 +238,7 @@ class MainActivity : Activity() {
             sp.setSpan(RelativeSizeSpan(0.6f), hm.length + 1, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             clockText.text = sp
             dateText.text = dateFormat.format(now)
+            if (themeMode == 2 && computeLight() != isLight) applyTheme()
             timeHandler.postDelayed(this, 1000)
         }
     }
@@ -259,6 +270,8 @@ class MainActivity : Activity() {
         showLabels = prefs.getBoolean("show_labels", true)
         useDesignIcon = prefs.getBoolean("use_design_icon", true)
         showInitial = prefs.getBoolean("show_initial", true)
+        themeMode = prefs.getInt("theme_mode", 0)
+        isLight = computeLight()
         loadCategories()
 
         loadApps()
@@ -280,7 +293,7 @@ class MainActivity : Activity() {
 
         clockText = TextView(this).apply {
             textSize = 46f
-            setTextColor(Color.WHITE)
+            setTextColor(textColor)
             gravity = Gravity.CENTER
             setTypeface(typeface, Typeface.BOLD)
             setOnClickListener { openClock() }
@@ -288,7 +301,7 @@ class MainActivity : Activity() {
         }
         dateText = TextView(this).apply {
             textSize = 16f
-            setTextColor(Color.parseColor("#CCCCCC"))
+            setTextColor(subText)
             gravity = Gravity.CENTER
             setPadding(0, dp(4), 0, 0)
             setOnClickListener { openCalendar() }
@@ -320,7 +333,7 @@ class MainActivity : Activity() {
 
         searchBar = EditText(this).apply {
             setSingleLine(true)
-            setTextColor(Color.WHITE)
+            setTextColor(textColor)
             setHintTextColor(Color.parseColor("#888888"))
             background = null
             val p = dp(10)
@@ -348,7 +361,7 @@ class MainActivity : Activity() {
             }
         }
 
-        val searchIcon = ImageView(this).apply {
+        searchIcon = ImageView(this).apply {
             setImageDrawable(circleIcon())
             val p = dp(8)
             setPadding(p, p, p, p)
@@ -384,9 +397,9 @@ class MainActivity : Activity() {
             }
         }
 
-        val content = LinearLayout(this).apply {
+        contentLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.BLACK)
+            setBackgroundColor(bgColor)
             isFocusable = true
             isFocusableInTouchMode = true
             addView(topArea, LinearLayout.LayoutParams(
@@ -425,12 +438,13 @@ class MainActivity : Activity() {
         }
 
         rootFrame = FrameLayout(this).apply {
-            addView(content, FrameLayout.LayoutParams(
+            addView(contentLayout, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             addView(robot, FrameLayout.LayoutParams(dp(robotSizeDp), dp(robotSizeDp)))
         }
 
         setContentView(rootFrame)
+        applyTheme()
 
         cameraManager = getSystemService(Context.CAMERA_SERVICE) as? CameraManager
         try {
@@ -499,6 +513,43 @@ class MainActivity : Activity() {
             }
             prefs.edit().putString("categories_json", arr.toString()).apply()
         } catch (e: Exception) {}
+    }
+
+    private fun computeLight(): Boolean {
+        return when (themeMode) {
+            1 -> true
+            2 -> {
+                val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+                hour in 6..20
+            }
+            else -> false
+        }
+    }
+
+    private fun themeLabel(): String = when (themeMode) {
+        1 -> "ライト"
+        2 -> "オート"
+        else -> "ダーク"
+    }
+
+    // 画面全体に今のテーマ色を反映
+    private fun applyTheme() {
+        isLight = computeLight()
+        window.decorView.setBackgroundColor(bgColor)
+        contentLayout.setBackgroundColor(bgColor)
+        clockText.setTextColor(textColor)
+        dateText.setTextColor(subText)
+        searchBar.setTextColor(textColor)
+        searchIcon.setImageDrawable(circleIcon())
+        weatherView.lightMode = isLight
+        statusArc.lightMode = isLight
+        appAdapter.notifyDataSetChanged()
+    }
+
+    private fun dialogBuilder(): AlertDialog.Builder {
+        val style = if (isLight) android.R.style.Theme_Material_Light_Dialog_Alert
+                    else android.R.style.Theme_Material_Dialog_Alert
+        return AlertDialog.Builder(this, style)
     }
 
     private fun goStandby() {
@@ -842,9 +893,9 @@ class MainActivity : Activity() {
 
     private fun addCategory() {
         val input = EditText(this).apply {
-            hint = "カテゴリ名"; setHintTextColor(grayText); setTextColor(Color.WHITE); setSingleLine(true)
+            hint = "カテゴリ名"; setHintTextColor(grayText); setTextColor(textColor); setSingleLine(true)
         }
-        AlertDialog.Builder(this)
+        dialogBuilder()
             .setTitle("カテゴリを追加")
             .setView(input)
             .setPositiveButton("追加") { _, _ ->
@@ -861,9 +912,9 @@ class MainActivity : Activity() {
 
     private fun editCategory(cat: Category) {
         val input = EditText(this).apply {
-            setText(cat.name); setTextColor(Color.WHITE); setSingleLine(true)
+            setText(cat.name); setTextColor(textColor); setSingleLine(true)
         }
-        AlertDialog.Builder(this)
+        dialogBuilder()
             .setTitle("カテゴリを編集")
             .setView(input)
             .setPositiveButton("保存") { _, _ ->
@@ -872,7 +923,7 @@ class MainActivity : Activity() {
                 showCategoryMenu()
             }
             .setNeutralButton("削除") { _, _ ->
-                AlertDialog.Builder(this)
+                dialogBuilder()
                     .setTitle("削除")
                     .setMessage("「${cat.name}」を削除しますか？")
                     .setPositiveButton("削除") { _, _ ->
@@ -902,7 +953,7 @@ class MainActivity : Activity() {
     }
 
     private fun confirmRemoveApp(cat: Category, app: LinkApp) {
-        AlertDialog.Builder(this)
+        dialogBuilder()
             .setTitle("削除")
             .setMessage("「${app.name}」を${cat.name}から削除しますか？")
             .setPositiveButton("削除") { _, _ ->
@@ -925,7 +976,7 @@ class MainActivity : Activity() {
         val search = EditText(this).apply {
             hint = "アプリを検索"
             setHintTextColor(grayText)
-            setTextColor(Color.WHITE)
+            setTextColor(textColor)
             setSingleLine(true)
             background = null
             val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -952,7 +1003,7 @@ class MainActivity : Activity() {
             for (a in list) {
                 val row = TextView(this).apply {
                     text = a.label
-                    setTextColor(Color.WHITE)
+                    setTextColor(textColor)
                     textSize = 14f
                     setPadding(dp(16), dp(12), dp(16), dp(12))
                     isClickable = true
@@ -982,7 +1033,7 @@ class MainActivity : Activity() {
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
         })
 
-        dialog = AlertDialog.Builder(this).setView(card).create()
+        dialog = dialogBuilder().setView(card).create()
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
         dialog.show()
     }
@@ -1002,7 +1053,7 @@ class MainActivity : Activity() {
     private fun bubbleTitle(text: String): TextView {
         return TextView(this).apply {
             this.text = text
-            setTextColor(Color.WHITE)
+            setTextColor(textColor)
             textSize = 13f
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
@@ -1027,7 +1078,7 @@ class MainActivity : Activity() {
         }
         val left = TextView(this).apply {
             text = label
-            setTextColor(if (leftAccent) orange else Color.WHITE)
+            setTextColor(if (leftAccent) orange else textColor)
             textSize = if (leftAccent) 16f else 14f
             setTypeface(typeface, if (leftAccent) Typeface.BOLD else Typeface.NORMAL)
         }
@@ -1166,6 +1217,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         hideSystemBars()
+        if (computeLight() != isLight) applyTheme()
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         registerNetworkCallback()
         updateConnectivity()
@@ -1328,7 +1380,7 @@ class MainActivity : Activity() {
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; color = Color.WHITE; strokeWidth = dp(2).toFloat()
+            style = Paint.Style.STROKE; color = textColor; strokeWidth = dp(2).toFloat()
         }
         canvas.drawCircle(size / 2f, size / 2f, size / 2f - dp(2), p)
         return BitmapDrawable(resources, bmp)
@@ -1349,7 +1401,7 @@ class MainActivity : Activity() {
     private fun menuTitle(text: String): TextView {
         return TextView(this).apply {
             this.text = text
-            setTextColor(Color.WHITE)
+            setTextColor(textColor)
             textSize = 15f
             setTypeface(typeface, Typeface.BOLD)
             setPadding(dp(18), dp(16), dp(18), dp(10))
@@ -1372,7 +1424,7 @@ class MainActivity : Activity() {
             setOnClickListener { onClick() }
         }
         val left = TextView(this).apply {
-            text = label; setTextColor(Color.WHITE); textSize = 14f
+            text = label; setTextColor(textColor); textSize = 14f
         }
         val right = TextView(this).apply {
             text = state; setTextColor(stateColor); textSize = 13f
@@ -1386,7 +1438,7 @@ class MainActivity : Activity() {
     private fun menuItem(label: String, onClick: () -> Unit): View {
         return TextView(this).apply {
             text = label
-            setTextColor(Color.WHITE)
+            setTextColor(textColor)
             textSize = 14f
             setPadding(dp(18), dp(14), dp(18), dp(14))
             isClickable = true
@@ -1416,10 +1468,16 @@ class MainActivity : Activity() {
             appAdapter.notifyDataSetChanged(); dialog.dismiss(); showSettingsMenu()
         })
         card.addView(menuDivider())
+        card.addView(menuRow("THEME", themeLabel(), orange) {
+            themeMode = (themeMode + 1) % 3
+            prefs.edit().putInt("theme_mode", themeMode).apply()
+            applyTheme(); dialog.dismiss(); showSettingsMenu()
+        })
+        card.addView(menuDivider())
         card.addView(menuRow("UPDATE", "›", grayText) {
             dialog.dismiss(); openUpdatePage()
         })
-        dialog = AlertDialog.Builder(this).setView(card).create()
+        dialog = dialogBuilder().setView(card).create()
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
         dialog.show()
     }
@@ -1441,7 +1499,7 @@ class MainActivity : Activity() {
         val input = EditText(this).apply {
             setText(displayName(app))
             setSingleLine(true)
-            setTextColor(Color.WHITE)
+            setTextColor(textColor)
             background = null
             val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             lp.setMargins(dp(18), 0, dp(18), 0)
@@ -1501,7 +1559,7 @@ class MainActivity : Activity() {
             dialog.dismiss(); openAppDetail(app.packageName)
         })
 
-        dialog = AlertDialog.Builder(this).setView(card).create()
+        dialog = dialogBuilder().setView(card).create()
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
         dialog.show()
     }
@@ -1646,17 +1704,17 @@ class MainActivity : Activity() {
         val canvas = Canvas(bmp)
         val inset = dp(2).toFloat()
         val radius = dp(cornerR).toFloat()
-        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = iconFill }
         canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, fill)
         val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; color = Color.WHITE; strokeWidth = dp(2).toFloat()
+            style = Paint.Style.STROKE; color = textColor; strokeWidth = dp(2).toFloat()
         }
         canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, border)
         if (showInitial) {
             val ch = firstChar(displayName(app))
             if (ch.isNotEmpty()) {
                 val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = Color.WHITE; textSize = size * 0.42f
+                    color = textColor; textSize = size * 0.42f
                     textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT
                 }
                 val cy = size / 2f - (tp.descent() + tp.ascent()) / 2f
@@ -1704,7 +1762,7 @@ class MainActivity : Activity() {
             cell.addView(icon)
             val label = TextView(this@MainActivity).apply {
                 text = if (showLabels) displayName(app) else ""
-                setTextColor(Color.WHITE); textSize = 12f
+                setTextColor(textColor); textSize = 12f
                 gravity = Gravity.CENTER; maxLines = 1
                 setPadding(0, dp(4), 0, 0)
             }
