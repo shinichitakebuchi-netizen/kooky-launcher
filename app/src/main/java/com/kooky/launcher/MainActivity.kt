@@ -536,6 +536,7 @@ class MainActivity : Activity() {
     private fun applyTheme() {
         isLight = computeLight()
         window.decorView.setBackgroundColor(bgColor)
+        applySystemBarColors()
         contentLayout.setBackgroundColor(bgColor)
         clockText.setTextColor(textColor)
         dateText.setTextColor(subText)
@@ -1201,12 +1202,28 @@ class MainActivity : Activity() {
     }
 
     private fun hideSystemBars() {
-        window.decorView.systemUiVisibility = (
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        var flags = (View.SYSTEM_UI_FLAG_LAYOUT_STABLE
             or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
             or View.SYSTEM_UI_FLAG_FULLSCREEN
-            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-        )
+            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY)
+        // ライトモード時は下のナビボタンを黒に
+        if (isLight) flags = flags or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        window.decorView.systemUiVisibility = flags
+    }
+
+    // 上（カメラ穴まわり）と下（ナビバー）をテーマ色に塗る
+    private fun applySystemBarColors() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 28) {
+                window.attributes = window.attributes.apply {
+                    layoutInDisplayCutoutMode =
+                        android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+            }
+            window.statusBarColor = bgColor
+            window.navigationBarColor = bgColor
+        } catch (e: Exception) {}
+        hideSystemBars()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
