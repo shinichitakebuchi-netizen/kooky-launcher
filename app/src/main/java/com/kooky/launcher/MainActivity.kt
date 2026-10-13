@@ -310,10 +310,10 @@ class MainActivity : Activity() {
 
         val weatherRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.BOTTOM
+            gravity = Gravity.CENTER_VERTICAL
             addView(weatherView, LinearLayout.LayoutParams(dp(72), dp(72)))
-            addView(statusArc, LinearLayout.LayoutParams(dp(72), dp(72)).apply {
-                leftMargin = dp(10)
+            addView(statusArc, LinearLayout.LayoutParams(dp(48), dp(48)).apply {
+                leftMargin = dp(8)
             })
         }
 
