@@ -253,6 +253,7 @@ class MainActivity : Activity() {
     private val chargeTick = object : Runnable {
         override fun run() {
             if (charging) updateChargeMode(true)
+            updateConnectivity()
             timeHandler.postDelayed(this, 15_000L)
         }
     }
@@ -311,9 +312,8 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.BOTTOM
             addView(weatherView, LinearLayout.LayoutParams(dp(72), dp(72)))
-            addView(statusArc, LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+            addView(statusArc, LinearLayout.LayoutParams(dp(72), dp(72)).apply {
                 leftMargin = dp(10)
-                bottomMargin = dp(4)
             })
         }
 
@@ -1321,6 +1321,17 @@ class MainActivity : Activity() {
         val (wifi, mobile) = readNet()
         statusArc.wifiOn = wifi
         statusArc.mobileOn = mobile
+        statusArc.signalLevel = if (mobile) readSignalLevel() else 0
+    }
+
+    // モバイル電波の強さ（0〜4）。取れない端末ではつながっていれば4扱い
+    private fun readSignalLevel(): Int {
+        return try {
+            if (android.os.Build.VERSION.SDK_INT >= 28) {
+                val tm = getSystemService(Context.TELEPHONY_SERVICE) as android.telephony.TelephonyManager
+                tm.signalStrength?.level ?: 4
+            } else 4
+        } catch (e: Exception) { 4 }
     }
 
     private fun maybeAskLocation() {
