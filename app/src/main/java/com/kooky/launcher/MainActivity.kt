@@ -144,6 +144,7 @@ class MainActivity : Activity() {
     private var showLabels = true
     private var useDesignIcon = true
     private var showInitial = true
+    private var showRobot = true
 
     private val readingMap = mapOf(
         "あはも" to "ahamo",
@@ -271,6 +272,7 @@ class MainActivity : Activity() {
         showLabels = prefs.getBoolean("show_labels", true)
         useDesignIcon = prefs.getBoolean("use_design_icon", true)
         showInitial = prefs.getBoolean("show_initial", true)
+        showRobot = prefs.getBoolean("show_robot", true)
         themeMode = prefs.getInt("theme_mode", 0)
         isLight = computeLight()
         loadCategories()
@@ -435,6 +437,7 @@ class MainActivity : Activity() {
         robot = ImageView(this).apply {
             setImageResource(R.drawable.robot_normal)
             setOnTouchListener { _, ev -> robotGesture.onTouchEvent(ev); true }
+            visibility = if (showRobot) View.VISIBLE else View.GONE
         }
 
         rootFrame = FrameLayout(this).apply {
@@ -553,6 +556,32 @@ class MainActivity : Activity() {
         return AlertDialog.Builder(this, style)
     }
 
+    // ROBOTの表示/非表示を切り替え
+    private fun applyRobotVisibility() {
+        if (showRobot) {
+            robot.visibility = View.VISIBLE
+            standby = false
+            flying = false
+            robotBusy = false
+            lastInteractMs = System.currentTimeMillis()
+            robot.animate().cancel()
+            robot.rotation = 0f; robot.rotationY = 0f
+            robot.scaleX = 1f; robot.scaleY = 1f
+            robotX = (rootFrame.width - dp(robotSizeDp)) / 2f
+            robotY = rootFrame.height * 0.62f
+            robot.x = robotX; robot.y = robotY
+            if (charging) startCharging()
+            else { enterSleepIfNeeded(); updateRobotFace() }
+        } else {
+            if (talking) {
+                switchingBubble = true; aiPopup?.dismiss(); switchingBubble = false
+                talking = false
+            }
+            robot.animate().cancel()
+            robot.visibility = View.GONE
+        }
+    }
+
     private fun goStandby() {
         standby = true
         flying = false
@@ -617,7 +646,7 @@ class MainActivity : Activity() {
     }
 
     private fun startCharging() {
-        if (standby || talking) return
+        if (!showRobot || standby || talking) return
         sleeping = false
         flying = false
         robotBusy = true
@@ -651,6 +680,7 @@ class MainActivity : Activity() {
     }
 
     private fun animateRobot() {
+        if (!showRobot) return
         if (talking) return
 
         if (!standby && !charging && !sleeping &&
@@ -1252,7 +1282,9 @@ class MainActivity : Activity() {
         timeHandler.post(robotAnim)
         lastInteractMs = System.currentTimeMillis()
         if (talking) { switchingBubble = true; aiPopup?.dismiss(); switchingBubble = false; talking = false }
-        if (standby) {
+        if (!showRobot) {
+            robot.visibility = View.GONE
+        } else if (standby) {
             robot.post { goStandby() }
         } else {
             if (!charging) { enterSleepIfNeeded(); updateRobotFace() }
@@ -1494,6 +1526,12 @@ class MainActivity : Activity() {
             if (showInitial) orange else grayText) {
             showInitial = !showInitial; prefs.edit().putBoolean("show_initial", showInitial).apply()
             appAdapter.notifyDataSetChanged(); dialog.dismiss(); showSettingsMenu()
+        })
+        card.addView(menuDivider())
+        card.addView(menuRow("ROBOT", if (showRobot) "表示" else "非表示",
+            if (showRobot) orange else grayText) {
+            showRobot = !showRobot; prefs.edit().putBoolean("show_robot", showRobot).apply()
+            applyRobotVisibility(); dialog.dismiss(); showSettingsMenu()
         })
         card.addView(menuDivider())
         card.addView(menuRow("THEME", themeLabel(), orange) {
