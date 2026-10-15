@@ -1265,6 +1265,7 @@ class MainActivity : Activity() {
         super.onResume()
         hideSystemBars()
         if (computeLight() != isLight) applyTheme()
+        thread { LockWallpaper.update(this) }
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         registerNetworkCallback()
         updateConnectivity()
@@ -1538,6 +1539,23 @@ class MainActivity : Activity() {
             themeMode = (themeMode + 1) % 3
             prefs.edit().putInt("theme_mode", themeMode).apply()
             applyTheme(); dialog.dismiss(); showSettingsMenu()
+        })
+        card.addView(menuDivider())
+        val lockOn = LockWallpaper.isOn(this)
+        card.addView(menuRow("LOCK", if (lockOn) "オン" else "オフ",
+            if (lockOn) orange else grayText) {
+            val on = !LockWallpaper.isOn(this)
+            prefs.edit().putBoolean(LockWallpaper.KEY_ON, on).apply()
+            dialog.dismiss()
+            thread {
+                if (on) LockWallpaper.update(this, true) else LockWallpaper.turnOff(this)
+                runOnUiThread {
+                    Toast.makeText(this,
+                        if (on) "ロック画面の壁紙を設定しました" else "ロック画面の壁紙を元に戻しました",
+                        Toast.LENGTH_SHORT).show()
+                    showSettingsMenu()
+                }
+            }
         })
         card.addView(menuDivider())
         card.addView(menuRow("UPDATE", "›", grayText) {
