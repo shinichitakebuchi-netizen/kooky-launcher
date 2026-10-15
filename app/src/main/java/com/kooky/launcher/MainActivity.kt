@@ -548,6 +548,7 @@ class MainActivity : Activity() {
         weatherView.lightMode = isLight
         statusArc.lightMode = isLight
         appAdapter.notifyDataSetChanged()
+        thread { LockWallpaper.update(this) }
     }
 
     private fun dialogBuilder(): AlertDialog.Builder {
