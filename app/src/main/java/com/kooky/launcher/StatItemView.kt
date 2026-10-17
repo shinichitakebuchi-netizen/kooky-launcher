@@ -30,7 +30,9 @@ class StatItemView(context: Context) : View(context) {
     private val sub get() = if (lightMode) Color.parseColor("#6E6E73") else Color.parseColor("#CCCCCC")
     private val track get() = if (lightMode) Color.parseColor("#1A000000") else Color.parseColor("#29FFFFFF")
 
-    private val d = resources.displayMetrics.density
+    // 全体の大きさ（1.0=日付と同じくらい、0.6=その60%）
+    private val k = 0.6f
+    private val d = resources.displayMetrics.density * k
     private val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 16f * d; typeface = android.graphics.Typeface.DEFAULT_BOLD
     }

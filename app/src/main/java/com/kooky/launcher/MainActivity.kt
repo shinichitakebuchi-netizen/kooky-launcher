@@ -336,8 +336,8 @@ class MainActivity : Activity() {
         val statsRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            addView(dataStat, LinearLayout.LayoutParams(dp(140), dp(34)))
-            addView(storageStat, LinearLayout.LayoutParams(dp(140), dp(34)).apply { leftMargin = dp(8) })
+            addView(dataStat, LinearLayout.LayoutParams(dp(84), dp(20)))
+            addView(storageStat, LinearLayout.LayoutParams(dp(84), dp(20)).apply { leftMargin = dp(6) })
         }
 
         val topArea = LinearLayout(this).apply {
@@ -355,7 +355,7 @@ class MainActivity : Activity() {
             addView(statsRow, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
-                topMargin = dp(10)
+                topMargin = dp(6)
             })
         }
 
