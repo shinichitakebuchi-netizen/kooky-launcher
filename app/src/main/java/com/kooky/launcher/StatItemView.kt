@@ -32,9 +32,9 @@ class StatItemView(context: Context) : View(context) {
 
     private val d = resources.displayMetrics.density
     private val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        textSize = 13f * d; typeface = android.graphics.Typeface.DEFAULT_BOLD
+        textSize = 16f * d; typeface = android.graphics.Typeface.DEFAULT_BOLD
     }
-    private val unitPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11f * d }
+    private val unitPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 13f * d }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
     }
@@ -42,8 +42,8 @@ class StatItemView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         val w = width.toFloat()
-        val icon = 14f * d
-        val gap = 4f * d
+        val icon = 17f * d
+        val gap = 5f * d
         val accent = if (alert) red else orange
 
         valuePaint.color = ink
@@ -52,7 +52,7 @@ class StatItemView(context: Context) : View(context) {
         val uw = unitPaint.measureText(unit)
         val total = icon + gap + vw + gap * 0.5f + uw
         var x = (w - total) / 2f
-        val rowMid = 9f * d
+        val rowMid = 11f * d
 
         drawIcon(canvas, x, rowMid - icon / 2f, icon, accent)
         x += icon + gap
@@ -62,10 +62,10 @@ class StatItemView(context: Context) : View(context) {
         canvas.drawText(unit, x, base, unitPaint)
 
         // ゲージ
-        val gw = 64f * d
-        val gh = 3f * d
+        val gw = 84f * d
+        val gh = 3.5f * d
         val gx = (w - gw) / 2f
-        val gy = 22f * d
+        val gy = 27f * d
         fill.color = track
         canvas.drawRoundRect(RectF(gx, gy, gx + gw, gy + gh), gh / 2f, gh / 2f, fill)
         if (ratio > 0f) {
