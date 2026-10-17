@@ -81,6 +81,8 @@ class MainActivity : Activity() {
     private lateinit var dateText: TextView
     private lateinit var weatherView: WeatherView
     private lateinit var statusArc: StatusArcView
+    private lateinit var dataStat: StatItemView
+    private lateinit var storageStat: StatItemView
     private lateinit var robot: ImageView
     private lateinit var rootFrame: FrameLayout
     private lateinit var contentLayout: LinearLayout
@@ -259,6 +261,13 @@ class MainActivity : Activity() {
         }
     }
 
+    private val statsTick = object : Runnable {
+        override fun run() {
+            updateStats()
+            timeHandler.postDelayed(this, 5 * 60 * 1000L)
+        }
+    }
+
     private val robotAnim = object : Runnable {
         override fun run() {
             animateRobot()
@@ -319,6 +328,18 @@ class MainActivity : Activity() {
             })
         }
 
+        dataStat = StatItemView(this).apply {
+            iconType = 0
+            setOnClickListener { if (!hasUsageAccess()) openUsageAccess() }
+        }
+        storageStat = StatItemView(this).apply { iconType = 1 }
+        val statsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            addView(dataStat, LinearLayout.LayoutParams(dp(112), dp(28)))
+            addView(storageStat, LinearLayout.LayoutParams(dp(112), dp(28)).apply { leftMargin = dp(8) })
+        }
+
         val topArea = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -331,6 +352,11 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(dateText, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(statsRow, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                topMargin = dp(10)
+            })
         }
 
         searchBar = EditText(this).apply {
@@ -547,6 +573,8 @@ class MainActivity : Activity() {
         searchIcon.setImageDrawable(circleIcon())
         weatherView.lightMode = isLight
         statusArc.lightMode = isLight
+        dataStat.lightMode = isLight
+        storageStat.lightMode = isLight
         appAdapter.notifyDataSetChanged()
         thread { LockWallpaper.update(this) }
     }
@@ -1282,6 +1310,8 @@ class MainActivity : Activity() {
         timeHandler.post(chargeTick)
         timeHandler.removeCallbacks(robotAnim)
         timeHandler.post(robotAnim)
+        timeHandler.removeCallbacks(statsTick)
+        timeHandler.post(statsTick)
         lastInteractMs = System.currentTimeMillis()
         if (talking) { switchingBubble = true; aiPopup?.dismiss(); switchingBubble = false; talking = false }
         if (!showRobot) {
@@ -1301,6 +1331,7 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(weatherTick)
         timeHandler.removeCallbacks(chargeTick)
         timeHandler.removeCallbacks(robotAnim)
+        timeHandler.removeCallbacks(statsTick)
         statusArc.stopBlink()
         switchingBubble = true
         aiPopup?.dismiss()
@@ -1437,6 +1468,141 @@ class MainActivity : Activity() {
         }
     }
 
+    // ===== 通信量・内部ストレージ =====
+    private fun hasUsageAccess(): Boolean {
+        return try {
+            val ops = getSystemService(Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+            @Suppress("DEPRECATION")
+            val mode = ops.checkOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS,
+                android.os.Process.myUid(), packageName)
+            mode == android.app.AppOpsManager.MODE_ALLOWED
+        } catch (e: Exception) { false }
+    }
+
+    private fun openUsageAccess() {
+        Toast.makeText(this, "「使用状況へのアクセス」でKooky Launcherを許可してください", Toast.LENGTH_LONG).show()
+        try {
+            startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {}
+    }
+
+    private fun closeDay(): Int = prefs.getInt("data_close_day", 31)       // 31=末日
+    private fun dataLimitGb(): Int = prefs.getInt("data_limit_gb", 20)
+
+    // 締め日の翌日0時（＝今回の集計開始）
+    private fun cycleStartMs(): Long {
+        val now = Calendar.getInstance()
+        val start = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }
+        fun startIn(cal: Calendar) {
+            val last = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+            val close = closeDay()
+            if (close >= last) {
+                cal.set(Calendar.DAY_OF_MONTH, 1)                   // 末日締め→1日開始
+            } else {
+                cal.set(Calendar.DAY_OF_MONTH, close + 1)
+            }
+        }
+        // 前月の締め日翌日から始まる場合もあるので、今月→前月の順に試す
+        startIn(start)
+        if (start.after(now)) {
+            start.set(Calendar.DAY_OF_MONTH, 1)
+            start.add(Calendar.MONTH, -1)
+            val close = closeDay()
+            val last = start.getActualMaximum(Calendar.DAY_OF_MONTH)
+            if (close >= last) start.add(Calendar.MONTH, 1)         // 前月末締め→今月1日
+            else start.set(Calendar.DAY_OF_MONTH, close + 1)
+        }
+        return start.timeInMillis
+    }
+
+    private fun readMobileBytes(): Long {
+        return try {
+            val nsm = getSystemService(Context.NETWORK_STATS_SERVICE) as android.app.usage.NetworkStatsManager
+            val b = nsm.querySummaryForDevice(ConnectivityManager.TYPE_MOBILE, null,
+                cycleStartMs(), System.currentTimeMillis())
+            b.rxBytes + b.txBytes
+        } catch (e: Exception) { -1L }
+    }
+
+    private fun fmtGb(bytes: Long): Pair<String, String> {
+        val gb = bytes / 1_000_000_000.0
+        return when {
+            gb < 1.0 -> Pair(String.format(Locale.US, "%d", (bytes / 1_000_000L)), "MB")
+            gb < 10.0 -> Pair(String.format(Locale.US, "%.1f", gb), "GB")
+            else -> Pair(String.format(Locale.US, "%d", gb.toLong()), "GB")
+        }
+    }
+
+    private fun updateStats() {
+        thread {
+            // 内部ストレージ
+            var usedGb = 0L; var totalGb = 0L; var sRatio = 0f
+            try {
+                val st = android.os.StatFs(android.os.Environment.getDataDirectory().path)
+                val total = st.totalBytes
+                val used = total - st.availableBytes
+                usedGb = used / 1_000_000_000L
+                totalGb = total / 1_000_000_000L
+                sRatio = if (total > 0) used.toFloat() / total else 0f
+            } catch (e: Exception) {}
+            // 通信量
+            val granted = hasUsageAccess()
+            val bytes = if (granted) readMobileBytes() else -1L
+            runOnUiThread {
+                storageStat.value = usedGb.toString()
+                storageStat.unit = "/${totalGb}GB"
+                storageStat.ratio = sRatio
+                storageStat.alert = sRatio >= 0.9f
+                if (!granted) {
+                    dataStat.value = "許可"; dataStat.unit = "タップ"; dataStat.ratio = 0f; dataStat.alert = false
+                } else if (bytes < 0) {
+                    dataStat.value = "--"; dataStat.unit = "GB"; dataStat.ratio = 0f; dataStat.alert = false
+                } else {
+                    val (v, u) = fmtGb(bytes)
+                    dataStat.value = v; dataStat.unit = u
+                    val limit = dataLimitGb() * 1_000_000_000.0
+                    val r = if (limit > 0) (bytes / limit).toFloat() else 0f
+                    dataStat.ratio = r
+                    dataStat.alert = r >= 1f
+                }
+            }
+        }
+    }
+
+    private fun closeDayLabel(): String = if (closeDay() >= 31) "末日" else "${closeDay()}日"
+
+    private fun showDataSettings() {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), 0)
+        }
+        fun field(label: String, value: String): EditText {
+            box.addView(TextView(this).apply { text = label; setTextColor(grayText); textSize = 12f })
+            val e = EditText(this).apply {
+                setText(value); setTextColor(textColor); setSingleLine(true)
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            }
+            box.addView(e)
+            return e
+        }
+        val closeIn = field("締め日（1〜31、31＝末日）", closeDay().toString())
+        val limitIn = field("月の上限（GB）", dataLimitGb().toString())
+        dialogBuilder()
+            .setTitle("通信量の設定")
+            .setView(box)
+            .setPositiveButton("保存") { _, _ ->
+                val c = closeIn.text.toString().toIntOrNull()?.coerceIn(1, 31) ?: closeDay()
+                val l = limitIn.text.toString().toIntOrNull()?.coerceIn(1, 999) ?: dataLimitGb()
+                prefs.edit().putInt("data_close_day", c).putInt("data_limit_gb", l).apply()
+                updateStats(); showSettingsMenu()
+            }
+            .setNegativeButton("キャンセル") { _, _ -> showSettingsMenu() }
+            .show()
+    }
+
     private fun circleIcon(): Drawable {
         val size = dp(24)
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
@@ -1540,6 +1706,10 @@ class MainActivity : Activity() {
             themeMode = (themeMode + 1) % 3
             prefs.edit().putInt("theme_mode", themeMode).apply()
             applyTheme(); dialog.dismiss(); showSettingsMenu()
+        })
+        card.addView(menuDivider())
+        card.addView(menuRow("DATA", "締め${closeDayLabel()}・${dataLimitGb()}GB", orange) {
+            dialog.dismiss(); showDataSettings()
         })
         card.addView(menuDivider())
         val lockOn = LockWallpaper.isOn(this)
