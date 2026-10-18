@@ -82,6 +82,7 @@ class MainActivity : Activity() {
     private lateinit var weatherView: WeatherView
     private lateinit var statusArc: StatusArcView
     private lateinit var dataStat: StatItemView
+    private lateinit var ticker: TickerView
     private lateinit var storageStat: StatItemView
     private lateinit var robot: ImageView
     private lateinit var rootFrame: FrameLayout
@@ -289,7 +290,10 @@ class MainActivity : Activity() {
         loadApps()
 
         NotificationService.onChange = {
-            runOnUiThread { appAdapter.notifyDataSetChanged() }
+            runOnUiThread {
+                appAdapter.notifyDataSetChanged()
+                if (::ticker.isInitialized) ticker.setItems(NotificationService.items)
+            }
         }
 
         weatherView = WeatherView(this).apply {
@@ -410,6 +414,11 @@ class MainActivity : Activity() {
             addView(searchIcon, LinearLayout.LayoutParams(dp(40), dp(40)))
         }
 
+        ticker = TickerView(this).apply {
+            visibility = View.GONE
+            onItemTap = { openNotification(it) }
+        }
+
         val grid = GridView(this).apply {
             numColumns = gridColumns
             val pad = dp(sideMarginDp)
@@ -433,6 +442,10 @@ class MainActivity : Activity() {
             addView(topArea, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             val barMargin = dp(sideMarginDp + cellPadDp)
+            addView(ticker, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(20)).apply {
+                setMargins(barMargin, 0, barMargin, dp(4))
+            })
             addView(searchBarRow, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 setMargins(barMargin, 0, barMargin, dp(8))
@@ -574,6 +587,7 @@ class MainActivity : Activity() {
         weatherView.lightMode = isLight
         statusArc.lightMode = isLight
         dataStat.lightMode = isLight
+        ticker.lightMode = isLight
         storageStat.lightMode = isLight
         appAdapter.notifyDataSetChanged()
         thread { LockWallpaper.update(this) }
@@ -1222,6 +1236,26 @@ class MainActivity : Activity() {
         popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, winX, rootTop + winY)
     }
 
+    // 掲示板の通知をタップ → その通知を開く（だめならアプリを開く）
+    private fun openNotification(item: NotificationService.Item) {
+        try {
+            if (item.intent != null) {
+                if (android.os.Build.VERSION.SDK_INT >= 34) {
+                    val opts = android.app.ActivityOptions.makeBasic()
+                    opts.setPendingIntentBackgroundActivityStartMode(
+                        android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+                    item.intent.send(this, 0, null, null, null, null, opts.toBundle())
+                } else {
+                    item.intent.send()
+                }
+                return
+            }
+        } catch (e: Exception) {}
+        packageManager.getLaunchIntentForPackage(item.pkg)?.let {
+            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(it)
+        }
+    }
+
     private fun openLinkApp(app: LinkApp) {
         aiPopup?.dismiss()
         try {
@@ -1312,6 +1346,8 @@ class MainActivity : Activity() {
         timeHandler.post(robotAnim)
         timeHandler.removeCallbacks(statsTick)
         timeHandler.post(statsTick)
+        ticker.setItems(NotificationService.items)
+        ticker.start()
         lastInteractMs = System.currentTimeMillis()
         if (talking) { switchingBubble = true; aiPopup?.dismiss(); switchingBubble = false; talking = false }
         if (!showRobot) {
@@ -1332,6 +1368,7 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(chargeTick)
         timeHandler.removeCallbacks(robotAnim)
         timeHandler.removeCallbacks(statsTick)
+        ticker.stop()
         statusArc.stopBlink()
         switchingBubble = true
         aiPopup?.dismiss()
