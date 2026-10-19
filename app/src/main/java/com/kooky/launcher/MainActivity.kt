@@ -296,12 +296,21 @@ class MainActivity : Activity() {
             }
         }
 
-        weatherView = WeatherView(this).apply {
-            weatherType = prefs.getInt("weather_type", 0)
-            setOnClickListener {
+        // 天気：タップで更新 / ダブルタップでYahoo!天気
+        val weatherGesture = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 Toast.makeText(this@MainActivity, "天気を更新中…", Toast.LENGTH_SHORT).show()
                 updateWeatherAtCurrentLocation(true)
+                return true
             }
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                openYahooWeather(); return true
+            }
+        })
+        weatherView = WeatherView(this).apply {
+            weatherType = prefs.getInt("weather_type", 0)
+            setOnTouchListener { _, ev -> weatherGesture.onTouchEvent(ev); true }
         }
         statusArc = StatusArcView(this).apply {
             setOnClickListener { showBatteryNumber = !showBatteryNumber }
@@ -1253,6 +1262,20 @@ class MainActivity : Activity() {
         } catch (e: Exception) {}
         packageManager.getLaunchIntentForPackage(item.pkg)?.let {
             it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(it)
+        }
+    }
+
+    private fun openYahooWeather() {
+        val pkg = "jp.co.yahoo.android.weather.type1"
+        packageManager.getLaunchIntentForPackage(pkg)?.let {
+            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(it); return
+        }
+        // 入っていなければWeb版
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://weather.yahoo.co.jp/"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            Toast.makeText(this, "Yahoo!天気を開けませんでした", Toast.LENGTH_SHORT).show()
         }
     }
 
