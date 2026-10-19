@@ -1578,9 +1578,19 @@ class MainActivity : Activity() {
             // 内部ストレージ
             var usedGb = 0L; var totalGb = 0L; var sRatio = 0f
             try {
-                val st = android.os.StatFs(android.os.Environment.getDataDirectory().path)
-                val total = st.totalBytes
-                val used = total - st.availableBytes
+                // 設定アプリの「ストレージ」と同じ数え方（システム領域も含めた本体容量）
+                var total: Long
+                var free: Long
+                try {
+                    val ssm = getSystemService(Context.STORAGE_STATS_SERVICE) as android.app.usage.StorageStatsManager
+                    total = ssm.getTotalBytes(android.os.storage.StorageManager.UUID_DEFAULT)
+                    free = ssm.getFreeBytes(android.os.storage.StorageManager.UUID_DEFAULT)
+                } catch (e: Exception) {
+                    val st = android.os.StatFs(android.os.Environment.getDataDirectory().path)
+                    total = st.totalBytes
+                    free = st.availableBytes
+                }
+                val used = total - free
                 usedGb = used / 1_000_000_000L
                 totalGb = total / 1_000_000_000L
                 sRatio = if (total > 0) used.toFloat() / total else 0f
