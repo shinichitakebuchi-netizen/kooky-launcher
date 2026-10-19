@@ -25,7 +25,8 @@ class TickerView(context: Context) : View(context) {
     private var running = false
 
     private val d = resources.displayMetrics.density
-    private val speed = 1.1f * d               // 1フレームで進む量
+    private val speedPerSec = 66f * d          // 1秒で進む量（時間基準なので画面の速さに左右されない）
+    private var lastFrameNs = 0L
     private val orange = Color.parseColor("#FF8C00")
     private val normal = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12f * d }
     private val bold = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -35,7 +36,12 @@ class TickerView(context: Context) : View(context) {
     private val step = object : Runnable {
         override fun run() {
             if (!running) return
-            offset += speed
+            val now = System.nanoTime()
+            // 前のフレームからの経過時間ぶん進める（止まっていた分は最大0.1秒まで）
+            val dt = if (lastFrameNs == 0L) 0f
+                     else ((now - lastFrameNs) / 1_000_000_000f).coerceAtMost(0.1f)
+            lastFrameNs = now
+            offset += speedPerSec * dt
             if (loopWidth > 0f && offset >= loopWidth) offset -= loopWidth
             invalidate()
             postOnAnimation(this)
@@ -67,13 +73,15 @@ class TickerView(context: Context) : View(context) {
             segX.add(x)
             x += (if (s.bold) bold else normal).measureText(s.text)
         }
+        // 通知が増減しても今の位置から続けて流す（先頭に戻さない）
+        offset = if (loopWidth > 0f && x > 0f) offset % x else 0f
         loopWidth = x
-        offset = 0f
     }
 
     fun start() {
         if (running || items.isEmpty()) return
         running = true
+        lastFrameNs = 0L
         postOnAnimation(step)
     }
 
