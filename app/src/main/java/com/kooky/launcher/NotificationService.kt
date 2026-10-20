@@ -22,6 +22,17 @@ class NotificationService : NotificationListenerService() {
         val activePackages = mutableSetOf<String>()
         // 掲示板用：アプリごとの最新1件（新しい順）
         @Volatile var items: List<Item> = emptyList()
+        // 掲示板に流さないシステム系のパッケージ
+        private val blockedPkgs = setOf(
+            "android", "com.android.systemui", "com.android.providers.downloads",
+            "com.samsung.android.lool", "com.samsung.android.app.smartcapture"
+        )
+        // 掲示板に流さない通知の種類
+        private val blockedCategories = setOf(
+            Notification.CATEGORY_TRANSPORT, Notification.CATEGORY_SERVICE,
+            Notification.CATEGORY_PROGRESS, Notification.CATEGORY_SYSTEM,
+            Notification.CATEGORY_STATUS
+        )
         // 変化をMainActivityに知らせるためのコールバック
         var onChange: (() -> Unit)? = null
     }
@@ -51,9 +62,17 @@ class NotificationService : NotificationListenerService() {
             for (sbn in list) {
                 if (sbn.packageName == packageName) continue
                 if (sbn.isOngoing) continue
+                if (sbn.packageName in blockedPkgs) continue
+                // ホームに出てこない（起動できない）アプリの通知は流さない
+                if (packageManager.getLaunchIntentForPackage(sbn.packageName) == null) continue
                 val n = sbn.notification ?: continue
                 if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) continue
+                if (n.flags and Notification.FLAG_FOREGROUND_SERVICE != 0) continue
+                if (n.category != null && n.category in blockedCategories) continue
                 val ex = n.extras ?: continue
+                // 音楽・動画の再生コントロールは流さない
+                val tmpl = ex.getString(Notification.EXTRA_TEMPLATE) ?: ""
+                if (tmpl.contains("MediaStyle")) continue
                 val title = ex.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim() ?: ""
                 val text = (ex.getCharSequence(Notification.EXTRA_TEXT)
                     ?: ex.getCharSequence(Notification.EXTRA_BIG_TEXT))?.toString()

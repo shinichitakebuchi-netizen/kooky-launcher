@@ -1614,8 +1614,9 @@ class MainActivity : Activity() {
                     free = st.availableBytes
                 }
                 val used = total - free
-                usedGb = used / 1_000_000_000L
-                totalGb = total / 1_000_000_000L
+                // Galaxyの設定画面と同じ1GB=1024MBで計算（256GB本体が256と出る）
+                usedGb = used / (1024L * 1024L * 1024L)
+                totalGb = total / (1024L * 1024L * 1024L)
                 sRatio = if (total > 0) used.toFloat() / total else 0f
             } catch (e: Exception) {}
             // 通信量
