@@ -87,6 +87,10 @@ class MainActivity : Activity() {
     private lateinit var robot: ImageView
     private lateinit var rootFrame: FrameLayout
     private lateinit var contentLayout: LinearLayout
+    private lateinit var topArea: LinearLayout
+    private lateinit var searchBarRow: LinearLayout
+    private lateinit var grid: GridView
+    private lateinit var rightCol: LinearLayout
     private lateinit var searchIcon: ImageView
 
     private val gridColumns = 4
@@ -353,7 +357,7 @@ class MainActivity : Activity() {
             addView(storageStat, LinearLayout.LayoutParams(dp(84), dp(20)).apply { leftMargin = dp(6) })
         }
 
-        val topArea = LinearLayout(this).apply {
+        topArea = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             addView(weatherRow, LinearLayout.LayoutParams(
@@ -409,7 +413,7 @@ class MainActivity : Activity() {
             setOnLongClickListener { showSettingsMenu(); true }
         }
 
-        val searchBarRow = LinearLayout(this).apply {
+        searchBarRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable().apply {
@@ -428,7 +432,7 @@ class MainActivity : Activity() {
             onItemTap = { openNotification(it) }
         }
 
-        val grid = GridView(this).apply {
+        grid = GridView(this).apply {
             numColumns = gridColumns
             val pad = dp(sideMarginDp)
             setPadding(pad, dp(appsTopPadDp), pad, dp(24))
@@ -448,20 +452,12 @@ class MainActivity : Activity() {
             setBackgroundColor(bgColor)
             isFocusable = true
             isFocusableInTouchMode = true
-            addView(topArea, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-            val barMargin = dp(sideMarginDp + cellPadDp)
-            addView(ticker, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(20)).apply {
-                setMargins(barMargin, 0, barMargin, dp(4))
-            })
-            addView(searchBarRow, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(barMargin, 0, barMargin, dp(8))
-            })
-            addView(grid, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(gridRows * cellHeightDp)))
         }
+        rightCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        arrangeLayout()
 
         val robotGesture = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
@@ -564,6 +560,63 @@ class MainActivity : Activity() {
             }
             prefs.edit().putString("categories_json", arr.toString()).apply()
         } catch (e: Exception) {}
+    }
+
+    // 縦向き：上に時計まわり、下にアプリ（3段）
+    // 横向き：左右50%ずつ。左に時計まわり、右に掲示板・検索・アプリ（2段）
+    private fun arrangeLayout() {
+        val land = resources.configuration.orientation ==
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        for (v in listOf<View>(topArea, ticker, searchBarRow, grid, rightCol)) {
+            (v.parent as? ViewGroup)?.removeView(v)
+        }
+        rightCol.removeAllViews()
+        contentLayout.removeAllViews()
+        val barMargin = dp(sideMarginDp + cellPadDp)
+        val tickerLp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(20)).apply {
+            setMargins(barMargin, 0, barMargin, dp(4))
+        }
+        val barLp = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            setMargins(barMargin, 0, barMargin, dp(8))
+        }
+        if (land) {
+            contentLayout.orientation = LinearLayout.HORIZONTAL
+            contentLayout.addView(topArea, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+            rightCol.addView(ticker, tickerLp)
+            rightCol.addView(searchBarRow, barLp)
+            rightCol.addView(grid, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(2 * cellHeightDp)))
+            contentLayout.addView(rightCol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+        } else {
+            contentLayout.orientation = LinearLayout.VERTICAL
+            contentLayout.addView(topArea, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            contentLayout.addView(ticker, tickerLp)
+            contentLayout.addView(searchBarRow, barLp)
+            contentLayout.addView(grid, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(gridRows * cellHeightDp)))
+        }
+    }
+
+    // 画面の向きが変わったとき（作り直さずに並べ替える）
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (talking) { switchingBubble = true; aiPopup?.dismiss(); switchingBubble = false; talking = false }
+        arrangeLayout()
+        hideSystemBars()
+        rootFrame.post {
+            if (!showRobot) return@post
+            robot.animate().cancel()
+            val size = dp(robotSizeDp)
+            robotX = robotX.coerceIn(0f, (rootFrame.width - size).toFloat().coerceAtLeast(0f))
+            robotY = robotY.coerceIn(rootFrame.height * 0.08f, (rootFrame.height - size).toFloat().coerceAtLeast(0f))
+            robot.x = robotX; robot.y = robotY
+            when {
+                standby -> goStandby()
+                charging -> startCharging()
+                else -> { robotBusy = false; flying = false; updateRobotFace() }
+            }
+        }
     }
 
     private fun computeLight(): Boolean {
