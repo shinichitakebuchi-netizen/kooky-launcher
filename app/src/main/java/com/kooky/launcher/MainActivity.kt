@@ -416,6 +416,7 @@ class MainActivity : Activity() {
             setImageDrawable(circleIcon())
             val p = dp(8)
             setPadding(p, p, p, p)
+            setOnClickListener { showSettingsMenu() }
             setOnLongClickListener { showSettingsMenu(); true }
         }
 
@@ -1767,7 +1768,12 @@ class MainActivity : Activity() {
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE; color = textColor; strokeWidth = dp(2).toFloat()
         }
-        canvas.drawCircle(size / 2f, size / 2f, size / 2f - dp(2), p)
+        // ハンバーガーマーク（横線3本）
+        p.strokeCap = Paint.Cap.ROUND
+        val l = dp(3).toFloat(); val r = size - dp(3).toFloat()
+        for (y in listOf(dp(6), dp(12), dp(18))) {
+            canvas.drawLine(l, y.toFloat(), r, y.toFloat(), p)
+        }
         return BitmapDrawable(resources, bmp)
     }
 
