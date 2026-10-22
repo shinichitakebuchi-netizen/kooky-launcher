@@ -1492,6 +1492,16 @@ class MainActivity : Activity() {
                 if (caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) mobile = true
             }
         } catch (e: Exception) {}
+        // WiFi中はモバイル回線が休んでいるので、「モバイルデータ設定がON＋SIMが使える」でもONにする
+        if (!mobile) {
+            try {
+                val tm = getSystemService(Context.TELEPHONY_SERVICE) as android.telephony.TelephonyManager
+                val simOk = tm.simState == android.telephony.TelephonyManager.SIM_STATE_READY
+                @Suppress("DEPRECATION")
+                val dataOn = tm.isDataEnabled
+                if (simOk && dataOn) mobile = true
+            } catch (e: Exception) {}
+        }
         return Pair(wifi, mobile)
     }
 

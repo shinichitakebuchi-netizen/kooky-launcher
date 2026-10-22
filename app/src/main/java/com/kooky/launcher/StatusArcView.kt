@@ -77,22 +77,30 @@ class StatusArcView(context: Context) : View(context) {
         val sweep = 270f
         val rect = RectF(cx - r, cy - r, cx + r, cy + r)
 
+        // タップ時は円のてっぺんに数字。数字の幅＋余白ぶん輪っかを空ける
+        val low = ratio <= 0.2f
+        val chargeColor = if (chargeMode == 2) red else green
+        val pct = (ratio * 100).toInt().toString()
+        textPaint.textSize = u * 0.20f
+        val gapDeg = if (showBatteryNumber)
+            Math.toDegrees(((textPaint.measureText(pct) + sw * 2.6f) / r).toDouble()).toFloat()
+        else 0f
+        val topA = 270f
+        val gapL = topA - gapDeg / 2f
+        val gapR = topA + gapDeg / 2f
+        val end = start + sweep
+
         // 背景の輪っか
         arc.strokeWidth = sw
         arc.color = trackColor
-        canvas.drawArc(rect, start, sweep, false, arc)
-
-        // 輪っかの終点の小さい点（右下）
-        val endRad = Math.toRadians((start + sweep).toDouble())
-        fill.color = subColor
-        canvas.drawCircle(
-            cx + (r * Math.cos(endRad)).toFloat(),
-            cy + (r * Math.sin(endRad)).toFloat(),
-            sw * 0.32f, fill)
+        if (gapDeg > 0f) {
+            canvas.drawArc(rect, start, gapL - start, false, arc)
+            canvas.drawArc(rect, gapR, end - gapR, false, arc)
+        } else {
+            canvas.drawArc(rect, start, sweep, false, arc)
+        }
 
         // 残量の輪っか：充電中は緑/赤（点滅）、20%以下は赤、それ以外はオレンジ
-        val low = ratio <= 0.2f
-        val chargeColor = if (chargeMode == 2) red else green
         if (chargeMode != 0) {
             arc.color = chargeColor
             arc.alpha = (blinkAlpha * 255).toInt().coerceIn(0, 255)
@@ -100,29 +108,40 @@ class StatusArcView(context: Context) : View(context) {
             arc.color = if (low) red else orange
             arc.alpha = 255
         }
-        if (ratio > 0f) canvas.drawArc(rect, start, sweep * ratio, false, arc)
+        if (ratio > 0f) {
+            val fillEnd = start + sweep * ratio
+            if (gapDeg > 0f) {
+                canvas.drawArc(rect, start, minOf(fillEnd, gapL) - start, false, arc)
+                if (fillEnd > gapR) canvas.drawArc(rect, gapR, fillEnd - gapR, false, arc)
+            } else {
+                canvas.drawArc(rect, start, fillEnd - start, false, arc)
+            }
+        }
         arc.alpha = 255
+
+        // てっぺんの数字
+        if (showBatteryNumber) {
+            textPaint.color = if (chargeMode != 0) chargeColor else if (low) red else orange
+            val ty = (cy - r) - (textPaint.descent() + textPaint.ascent()) / 2f
+            canvas.drawText(pct, cx, ty, textPaint)
+        }
 
         // 真ん中
         val iy = u * 0.5f
         when {
             chargeMode != 0 -> drawBolt(canvas, cx, iy, u, chargeColor, blinkAlpha)
-            showBatteryNumber -> {
-                textPaint.textSize = u * 0.30f
-                textPaint.color = if (low) red else orange
-                val ty = iy - (textPaint.descent() + textPaint.ascent()) / 2f
-                canvas.drawText((ratio * 100).toInt().toString(), cx, ty, textPaint)
-            }
             wifiOn -> drawWifi(canvas, cx, iy, u)
             mobileOn -> drawBars(canvas, cx, iy, u)
             else -> drawNoNet(canvas, cx, iy, u)
         }
 
-        // 下の4つの点＝モバイル電波の強さ
-        val dy = cy + u * 0.36f
-        for (i in 0 until 4) {
-            fill.color = if (mobileOn && i < signalLevel) orange else offColor
-            canvas.drawCircle(cx + (i - 1.5f) * u * 0.10f, dy, u * 0.028f, fill)
+        // 下のすき間に、輪っかと同じ円に沿って4つの点＝モバイル電波の強さ（左→右）
+        val angs = floatArrayOf(117f, 99f, 81f, 63f)
+        for (k in 0 until 4) {
+            val a = Math.toRadians(angs[k].toDouble())
+            fill.color = if (mobileOn && k < signalLevel) orange else offColor
+            canvas.drawCircle(cx + (r * Math.cos(a)).toFloat(), cy + (r * Math.sin(a)).toFloat(),
+                u * 0.034f, fill)
         }
     }
 
