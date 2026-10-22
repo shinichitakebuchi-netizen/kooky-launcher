@@ -19,7 +19,7 @@ class StatusArcView(context: Context) : View(context) {
     // モバイル電波の強さ 0〜4（下の4つの点）
     var signalLevel: Int = 0
         set(value) { field = value.coerceIn(0, 4); invalidate() }
-    var showBatteryNumber: Boolean = false
+    var showBatteryNumber: Boolean = true
         set(value) { field = value; invalidate() }
     // 充電状態：0=非充電 / 1=通常充電(緑) / 2=急速充電(赤)
     var chargeMode: Int = 0

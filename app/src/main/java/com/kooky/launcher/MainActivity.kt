@@ -316,8 +316,14 @@ class MainActivity : Activity() {
             weatherType = prefs.getInt("weather_type", 0)
             setOnTouchListener { _, ev -> weatherGesture.onTouchEvent(ev); true }
         }
+        // インジケーター：数字は常に表示。ダブルタップでコントロールセンター（クイック設定）
+        val arcGesture = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+            override fun onDoubleTap(e: MotionEvent): Boolean { openQuickSettings(); return true }
+        })
         statusArc = StatusArcView(this).apply {
-            setOnClickListener { showBatteryNumber = !showBatteryNumber }
+            showBatteryNumber = true
+            setOnTouchListener { _, ev -> arcGesture.onTouchEvent(ev); true }
         }
 
         clockText = TextView(this).apply {
@@ -1316,6 +1322,23 @@ class MainActivity : Activity() {
         packageManager.getLaunchIntentForPackage(item.pkg)?.let {
             it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(it)
         }
+    }
+
+    // 上から引き下ろすクイック設定パネルを開く
+    @android.annotation.SuppressLint("WrongConstant")
+    private fun openQuickSettings() {
+        try {
+            val sbm = getSystemService("statusbar")
+            val cls = Class.forName("android.app.StatusBarManager")
+            cls.getMethod("expandSettingsPanel").invoke(sbm)
+            return
+        } catch (e: Exception) {}
+        try {
+            val sbm = getSystemService("statusbar")
+            Class.forName("android.app.StatusBarManager").getMethod("expandNotificationsPanel").invoke(sbm)
+            return
+        } catch (e: Exception) {}
+        Toast.makeText(this, "コントロールセンターを開けませんでした", Toast.LENGTH_SHORT).show()
     }
 
     private fun openYahooWeather() {
