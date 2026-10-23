@@ -1358,6 +1358,7 @@ class MainActivity : Activity() {
 
     private fun openLinkApp(app: LinkApp) {
         aiPopup?.dismiss()
+        if (isShortcut(app.pkg)) { startShortcutKey(app.pkg); return }
         try {
             val intent = packageManager.getLaunchIntentForPackage(app.pkg)
             if (intent != null) {
@@ -1432,6 +1433,7 @@ class MainActivity : Activity() {
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         registerNetworkCallback()
         updateConnectivity()
+        loadShortcuts()
         sortApps()
         applyFilter()
         resetSearch()
@@ -2099,9 +2101,15 @@ class MainActivity : Activity() {
             dialog.dismiss()
         })
         card.addView(menuDivider())
-        card.addView(menuItem("アプリ詳細") {
-            dialog.dismiss(); openAppDetail(app.packageName)
-        })
+        if (isShortcut(app.packageName)) {
+            card.addView(menuItem("ホームから外す") {
+                dialog.dismiss(); removeShortcutKey(app.packageName)
+            })
+        } else {
+            card.addView(menuItem("アプリ詳細") {
+                dialog.dismiss(); openAppDetail(app.packageName)
+            })
+        }
 
         dialog = dialogBuilder().setView(card).create()
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
@@ -2192,7 +2200,68 @@ class MainActivity : Activity() {
             if (pkg == packageName) continue
             apps.add(AppEntry(ri.loadLabel(pm).toString(), pkg, ri.loadIcon(pm)))
         }
+        loadShortcuts()
         sortApps()
+    }
+
+    // ===== ブラウザ等から「ホーム画面に追加」されたショートカット =====
+    // アプリ一覧では packageName を "shortcut:<アプリ>/<ID>" として扱う
+    private val SC = "shortcut:"
+
+    private fun isShortcut(key: String) = key.startsWith(SC)
+
+    private fun loadShortcuts() {
+        apps.removeAll { isShortcut(it.packageName) }
+        try {
+            val la = getSystemService(Context.LAUNCHER_APPS_SERVICE) as android.content.pm.LauncherApps
+            if (!la.hasShortcutHostPermission()) return
+            val q = android.content.pm.LauncherApps.ShortcutQuery()
+                .setQueryFlags(android.content.pm.LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED)
+            val list = la.getShortcuts(q, android.os.Process.myUserHandle()) ?: return
+            val dpi = resources.displayMetrics.densityDpi
+            for (sc in list) {
+                if (!sc.isEnabled) continue
+                val label = (sc.shortLabel ?: sc.longLabel ?: "").toString()
+                val icon = try { la.getShortcutIconDrawable(sc, dpi) } catch (e: Exception) { null }
+                    ?: packageManager.getApplicationIcon(sc.`package`)
+                apps.add(AppEntry(label, SC + sc.`package` + "/" + sc.id, icon))
+            }
+        } catch (e: Exception) {}
+    }
+
+    private fun startShortcutKey(key: String): Boolean {
+        return try {
+            val body = key.removePrefix(SC)
+            val pkg = body.substringBefore("/")
+            val id = body.substringAfter("/")
+            val la = getSystemService(Context.LAUNCHER_APPS_SERVICE) as android.content.pm.LauncherApps
+            la.startShortcut(pkg, id, null, null, android.os.Process.myUserHandle())
+            true
+        } catch (e: Exception) {
+            Toast.makeText(this, "ショートカットを開けませんでした", Toast.LENGTH_SHORT).show()
+            false
+        }
+    }
+
+    // ショートカットをホームから外す
+    private fun removeShortcutKey(key: String) {
+        try {
+            val body = key.removePrefix(SC)
+            val pkg = body.substringBefore("/")
+            val id = body.substringAfter("/")
+            val la = getSystemService(Context.LAUNCHER_APPS_SERVICE) as android.content.pm.LauncherApps
+            val q = android.content.pm.LauncherApps.ShortcutQuery()
+                .setPackage(pkg)
+                .setQueryFlags(android.content.pm.LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED)
+            val keep = (la.getShortcuts(q, android.os.Process.myUserHandle()) ?: emptyList())
+                .map { it.id }.filter { it != id }
+            la.pinShortcuts(pkg, keep, android.os.Process.myUserHandle())
+            prefs.edit().remove(key).remove("name_$key").apply()
+            loadShortcuts(); sortApps(); applyFilter()
+            Toast.makeText(this, "ホームから外しました", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "外せませんでした", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun sortApps() {
@@ -2228,6 +2297,7 @@ class MainActivity : Activity() {
         val count = prefs.getInt(pkg, 0) + 1
         prefs.edit().putInt(pkg, count).apply()
         resetSearch()
+        if (isShortcut(pkg)) { startShortcutKey(pkg); return }
         packageManager.getLaunchIntentForPackage(pkg)?.let { startActivity(it) }
     }
 
