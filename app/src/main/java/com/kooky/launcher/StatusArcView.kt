@@ -109,12 +109,15 @@ class StatusArcView(context: Context) : View(context) {
             arc.alpha = 255
         }
         if (ratio > 0f) {
-            val fillEnd = start + sweep * ratio
             if (gapDeg > 0f) {
-                canvas.drawArc(rect, start, minOf(fillEnd, gapL) - start, false, arc)
-                if (fillEnd > gapR) canvas.drawArc(rect, gapR, fillEnd - gapR, false, arc)
+                // 数字のすき間を飛ばして、見えている輪っかだけで0〜100%を表す
+                val leftLen = gapL - start
+                val rightLen = end - gapR
+                val fillLen = (leftLen + rightLen) * ratio
+                canvas.drawArc(rect, start, minOf(fillLen, leftLen), false, arc)
+                if (fillLen > leftLen) canvas.drawArc(rect, gapR, fillLen - leftLen, false, arc)
             } else {
-                canvas.drawArc(rect, start, fillEnd - start, false, arc)
+                canvas.drawArc(rect, start, sweep * ratio, false, arc)
             }
         }
         arc.alpha = 255
