@@ -1892,12 +1892,138 @@ class MainActivity : Activity() {
             }
         })
         card.addView(menuDivider())
+        card.addView(menuRow("BACKUP", "›", grayText) {
+            dialog.dismiss(); showBackupMenu()
+        })
+        card.addView(menuDivider())
         card.addView(menuRow("UPDATE", "›", grayText) {
             dialog.dismiss(); openUpdatePage()
         })
         dialog = dialogBuilder().setView(card).create()
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
         dialog.show()
+    }
+
+    // ===== バックアップ（書き出し／読み込み） =====
+    private val REQ_EXPORT = 2001
+    private val REQ_IMPORT = 2002
+    private val backupSkipKeys = setOf("lock_dots_last")
+
+    private fun showBackupMenu() {
+        dialogBuilder()
+            .setTitle("バックアップ")
+            .setMessage("利用回数・名前の変更・カテゴリ・設定をファイルに保存／復元します。\n保存先はダウンロードやGoogleドライブを選べます。")
+            .setPositiveButton("書き出す") { _, _ -> startExport() }
+            .setNeutralButton("読み込む") { _, _ -> startImport() }
+            .setNegativeButton("キャンセル", null)
+            .show()
+    }
+
+    private fun startExport() {
+        val name = "kooky-backup-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date()) + ".json"
+        try {
+            startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "application/json"
+                putExtra(Intent.EXTRA_TITLE, name)
+            }, REQ_EXPORT)
+        } catch (e: Exception) {
+            Toast.makeText(this, "保存先を選ぶ画面を開けませんでした", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun startImport() {
+        try {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+            }, REQ_IMPORT)
+        } catch (e: Exception) {
+            Toast.makeText(this, "ファイルを選ぶ画面を開けませんでした", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun backupJson(): String {
+        val root = JSONObject()
+        root.put("app", "kooky-launcher")
+        root.put("version", 1)
+        root.put("saved_at", System.currentTimeMillis())
+        val data = JSONObject()
+        for ((k, v) in prefs.all) {
+            if (k in backupSkipKeys || v == null) continue
+            val o = JSONObject()
+            when (v) {
+                is Boolean -> { o.put("t", "b"); o.put("v", v) }
+                is Int -> { o.put("t", "i"); o.put("v", v) }
+                is Long -> { o.put("t", "l"); o.put("v", v) }
+                is Float -> { o.put("t", "f"); o.put("v", v.toDouble()) }
+                is String -> { o.put("t", "s"); o.put("v", v) }
+                else -> continue
+            }
+            data.put(k, o)
+        }
+        root.put("data", data)
+        return root.toString(2)
+    }
+
+    private fun restoreJson(text: String): Int {
+        val root = JSONObject(text)
+        if (root.optString("app") != "kooky-launcher") throw IllegalArgumentException("not kooky")
+        val data = root.getJSONObject("data")
+        val ed = prefs.edit()
+        ed.clear()
+        var n = 0
+        for (k in data.keys()) {
+            val o = data.getJSONObject(k)
+            when (o.getString("t")) {
+                "b" -> ed.putBoolean(k, o.getBoolean("v"))
+                "i" -> ed.putInt(k, o.getInt("v"))
+                "l" -> ed.putLong(k, o.getLong("v"))
+                "f" -> ed.putFloat(k, o.getDouble("v").toFloat())
+                "s" -> ed.putString(k, o.getString("v"))
+                else -> continue
+            }
+            n++
+        }
+        ed.commit()
+        return n
+    }
+
+    @Deprecated("Activity API")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        val uri = data?.data
+        if (resultCode != RESULT_OK || uri == null) return
+        when (requestCode) {
+            REQ_EXPORT -> try {
+                contentResolver.openOutputStream(uri, "wt")?.use { it.write(backupJson().toByteArray(Charsets.UTF_8)) }
+                Toast.makeText(this, "バックアップを保存しました", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "保存に失敗しました", Toast.LENGTH_SHORT).show()
+            }
+            REQ_IMPORT -> {
+                val text = try {
+                    contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+                } catch (e: Exception) { null }
+                if (text == null) {
+                    Toast.makeText(this, "ファイルを読めませんでした", Toast.LENGTH_SHORT).show(); return
+                }
+                dialogBuilder()
+                    .setTitle("読み込み")
+                    .setMessage("今の利用回数や設定は、このバックアップの内容に置き換わります。よろしいですか？")
+                    .setPositiveButton("読み込む") { _, _ ->
+                        try {
+                            val n = restoreJson(text)
+                            Toast.makeText(this, "${n}件を復元しました", Toast.LENGTH_SHORT).show()
+                            recreate()
+                        } catch (e: Exception) {
+                            Toast.makeText(this, "Kooky Launcherのバックアップではないようです", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    .setNegativeButton("キャンセル", null)
+                    .show()
+            }
+        }
     }
 
     private fun openUpdatePage() {
