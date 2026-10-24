@@ -416,7 +416,6 @@ class MainActivity : Activity() {
             setImageDrawable(circleIcon())
             val p = dp(8)
             setPadding(p, p, p, p)
-            setOnClickListener { showSettingsMenu() }
             setOnLongClickListener { showSettingsMenu(); true }
         }
 
