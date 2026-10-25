@@ -2093,12 +2093,9 @@ class MainActivity : Activity() {
         card.addView(btnRow)
 
         card.addView(menuDivider())
-        card.addView(menuItem("利用回数をリセット") {
-            prefs.edit().remove(app.packageName).apply()
-            sortApps(); applyFilter()
-            Toast.makeText(this, "利用回数をリセットしました", Toast.LENGTH_SHORT).show()
-            dialog.dismiss()
-        })
+        card.addView(usageSection(app))
+        card.addView(menuDivider())
+        card.addView(favSection(app))
         card.addView(menuDivider())
         if (isShortcut(app.packageName)) {
             card.addView(menuItem("ホームから外す") {
@@ -2112,7 +2109,154 @@ class MainActivity : Activity() {
 
         dialog = dialogBuilder().setView(card).create()
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        // 閉じたときに回数の並び替えを反映
+        dialog.setOnDismissListener { sortApps(); applyFilter() }
         dialog.show()
+    }
+
+    // ===== 利用回数（見える化＋編集） =====
+    private fun usageSection(app: AppEntry): View {
+        val key = app.packageName
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(12), dp(18), dp(12))
+        }
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        head.addView(TextView(this).apply { text = "利用回数"; setTextColor(textColor); textSize = 14f },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        fun btn(t: String) = TextView(this).apply {
+            text = t; setTextColor(orange); textSize = 18f
+            setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            isClickable = true
+        }
+        val minus = btn("−")
+        val countText = TextView(this).apply {
+            setTextColor(textColor); textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            minWidth = dp(48)
+            isClickable = true
+        }
+        val plus = btn("＋")
+        head.addView(minus, LinearLayout.LayoutParams(dp(36), dp(32)))
+        head.addView(countText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
+        head.addView(plus, LinearLayout.LayoutParams(dp(36), dp(32)))
+        box.addView(head)
+
+        // バー（いちばん使っているアプリを100%として表示）
+        val track = FrameLayout(this).apply {
+            background = GradientDrawable().apply {
+                cornerRadius = dp(3).toFloat(); setColor(divider)
+            }
+        }
+        val bar = View(this).apply {
+            background = GradientDrawable().apply { cornerRadius = dp(3).toFloat(); setColor(orange) }
+        }
+        track.addView(bar, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT))
+        box.addView(track, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(6)).apply {
+            topMargin = dp(6)
+        })
+        val foot = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val rankText = TextView(this).apply { setTextColor(grayText); textSize = 12f }
+        val reset = TextView(this).apply {
+            text = "リセット"; setTextColor(grayText); textSize = 12f
+            setPadding(dp(8), dp(6), 0, dp(2)); isClickable = true
+        }
+        foot.addView(rankText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        foot.addView(reset)
+        box.addView(foot, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(4)
+        })
+
+        fun refresh() {
+            val c = prefs.getInt(key, 0)
+            countText.text = c.toString()
+            val counts = apps.map { if (it.packageName == key) c else prefs.getInt(it.packageName, 0) }
+            val max = (counts.maxOrNull() ?: 0).coerceAtLeast(1)
+            val rank = counts.count { it > c } + 1
+            rankText.text = if (c == 0) "まだ使っていません" else "全${apps.size}個中 ${rank}位"
+            track.post {
+                bar.layoutParams = (bar.layoutParams as FrameLayout.LayoutParams).apply {
+                    width = (track.width * (c.toFloat() / max)).toInt()
+                }
+                bar.requestLayout()
+            }
+        }
+        fun set(v: Int) {
+            val n = v.coerceIn(0, 99999)
+            if (n == 0) prefs.edit().remove(key).apply() else prefs.edit().putInt(key, n).apply()
+            refresh()
+        }
+        minus.setOnClickListener { set(prefs.getInt(key, 0) - 1) }
+        plus.setOnClickListener { set(prefs.getInt(key, 0) + 1) }
+        reset.setOnClickListener { set(0) }
+        countText.setOnClickListener {
+            val input = EditText(this).apply {
+                setText(prefs.getInt(key, 0).toString()); setTextColor(textColor); setSingleLine(true)
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                setSelection(text.length)
+            }
+            dialogBuilder().setTitle("利用回数を入力").setView(input)
+                .setPositiveButton("保存") { _, _ -> set(input.text.toString().toIntOrNull() ?: 0) }
+                .setNegativeButton("キャンセル", null).show()
+        }
+        refresh()
+        return box
+    }
+
+    // ===== お気に入り（アプリ枠の色） =====
+    // 0=なし / 1=オレンジ / 2=青 / 3=赤
+    private val favColors = intArrayOf(0, Color.parseColor("#FF8C00"),
+        Color.parseColor("#0A84FF"), Color.parseColor("#FF3B30"))
+
+    private fun favColorOf(key: String): Int? {
+        val f = prefs.getInt("fav_$key", 0)
+        return if (f in 1..3) favColors[f] else null
+    }
+
+    private fun favSection(app: AppEntry): View {
+        val key = app.packageName
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(12), dp(18), dp(12))
+        }
+        row.addView(TextView(this).apply { text = "お気に入り"; setTextColor(textColor); textSize = 14f },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val chips = ArrayList<View>()
+        fun paint() {
+            val cur = prefs.getInt("fav_$key", 0)
+            for ((i, v) in chips.withIndex()) {
+                v.background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    if (i == 0) { setColor(Color.TRANSPARENT); setStroke(dp(2), grayText) }
+                    else setColor(favColors[i])
+                    if (i == cur) setStroke(dp(3), textColor)
+                }
+            }
+        }
+        for (i in 0..3) {
+            val v = View(this).apply {
+                isClickable = true
+                contentDescription = arrayOf("なし", "オレンジ", "青", "赤")[i]
+                setOnClickListener {
+                    if (i == 0) prefs.edit().remove("fav_$key").apply()
+                    else prefs.edit().putInt("fav_$key", i).apply()
+                    paint(); appAdapter.notifyDataSetChanged()
+                }
+            }
+            chips.add(v)
+            row.addView(v, LinearLayout.LayoutParams(dp(26), dp(26)).apply { leftMargin = dp(10) })
+        }
+        paint()
+        return row
     }
 
     private fun openAppDetail(pkg: String) {
@@ -2255,7 +2399,7 @@ class MainActivity : Activity() {
             val keep = (la.getShortcuts(q, android.os.Process.myUserHandle()) ?: emptyList())
                 .map { it.id }.filter { it != id }
             la.pinShortcuts(pkg, keep, android.os.Process.myUserHandle())
-            prefs.edit().remove(key).remove("name_$key").apply()
+            prefs.edit().remove(key).remove("name_$key").remove("fav_$key").apply()
             loadShortcuts(); sortApps(); applyFilter()
             Toast.makeText(this, "ホームから外しました", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
@@ -2302,6 +2446,22 @@ class MainActivity : Activity() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+    // シンプルアイコン用：お気に入りの色枠で囲む
+    private fun framedIcon(base: Drawable, color: Int, withNotif: Boolean): Drawable {
+        val size = dp(56)
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        val pad = dp(5)
+        base.setBounds(pad, pad, size - pad, size - pad); base.draw(canvas)
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; this.color = color; strokeWidth = dp(3).toFloat()
+        }
+        val i = dp(2).toFloat()
+        canvas.drawRoundRect(i, i, size - i, size - i, dp(cornerR + 2).toFloat(), dp(cornerR + 2).toFloat(), p)
+        if (withNotif) drawDot(canvas, size)
+        return BitmapDrawable(resources, bmp)
+    }
+
     private fun withBadge(base: Drawable): Drawable {
         val size = dp(56)
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
@@ -2320,7 +2480,8 @@ class MainActivity : Activity() {
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = iconFill }
         canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, fill)
         val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; color = textColor; strokeWidth = dp(2).toFloat()
+            style = Paint.Style.STROKE; color = favColorOf(app.packageName) ?: textColor
+            strokeWidth = dp(if (favColorOf(app.packageName) != null) 3 else 2).toFloat()
         }
         canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, border)
         if (showInitial) {
@@ -2366,7 +2527,9 @@ class MainActivity : Activity() {
                 setPadding(dp(cellPadDp), dp(8), dp(cellPadDp), dp(8))
             }
             val hasNotif = NotificationService.activePackages.contains(app.packageName)
+            val fav = favColorOf(app.packageName)
             val iconDrawable = if (useDesignIcon) designIcon(app, hasNotif)
+                else if (fav != null) framedIcon(app.icon, fav, hasNotif)
                 else if (hasNotif) withBadge(app.icon) else app.icon
             val icon = ImageView(this@MainActivity).apply {
                 setImageDrawable(iconDrawable)
