@@ -2454,7 +2454,7 @@ class MainActivity : Activity() {
         val pad = dp(5)
         base.setBounds(pad, pad, size - pad, size - pad); base.draw(canvas)
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; this.color = color; strokeWidth = dp(3).toFloat()
+            style = Paint.Style.STROKE; this.color = color; strokeWidth = dp(2).toFloat()
         }
         val i = dp(2).toFloat()
         canvas.drawRoundRect(i, i, size - i, size - i, dp(cornerR + 2).toFloat(), dp(cornerR + 2).toFloat(), p)
@@ -2481,7 +2481,7 @@ class MainActivity : Activity() {
         canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, fill)
         val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE; color = favColorOf(app.packageName) ?: textColor
-            strokeWidth = dp(if (favColorOf(app.packageName) != null) 3 else 2).toFloat()
+            strokeWidth = dp(2).toFloat()
         }
         canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, border)
         if (showInitial) {
