@@ -38,6 +38,7 @@ jobs:
         with:
           name: kooky-launcher-debug
           path: app/build/outputs/apk/debug/*.apk
+          retention-days: 3
 
       - name: Publish APK to Release
         uses: softprops/action-gh-release@v2
