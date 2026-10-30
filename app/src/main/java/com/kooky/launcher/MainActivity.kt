@@ -436,6 +436,7 @@ class MainActivity : Activity() {
         ticker = TickerView(this).apply {
             visibility = View.GONE
             onItemTap = { openNotification(it) }
+            onDoubleTap = { openNotificationPanel() }
         }
 
         grid = GridView(this).apply {
@@ -1321,6 +1322,17 @@ class MainActivity : Activity() {
         } catch (e: Exception) {}
         packageManager.getLaunchIntentForPackage(item.pkg)?.let {
             it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(it)
+        }
+    }
+
+    // 上から引き下ろす通知パネルを開く
+    @android.annotation.SuppressLint("WrongConstant")
+    private fun openNotificationPanel() {
+        try {
+            val sbm = getSystemService("statusbar")
+            Class.forName("android.app.StatusBarManager").getMethod("expandNotificationsPanel").invoke(sbm)
+        } catch (e: Exception) {
+            Toast.makeText(this, "通知パネルを開けませんでした", Toast.LENGTH_SHORT).show()
         }
     }
 

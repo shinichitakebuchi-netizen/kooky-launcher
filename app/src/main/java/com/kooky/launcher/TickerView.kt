@@ -115,17 +115,34 @@ class TickerView(context: Context) : View(context) {
         }
     }
 
-    // タップした位置に流れている通知を返す
+    // 1回タップ：その位置に流れている通知を開く／ダブルタップ：通知パネルを下ろす
+    var onDoubleTap: (() -> Unit)? = null
+
+    private fun itemAt(x: Float): NotificationService.Item? {
+        if (loopWidth <= 0f || segs.isEmpty()) return null
+        var pos = (x + offset) % loopWidth
+        if (pos < 0) pos += loopWidth
+        var idx = 0
+        for (i in segX.indices) if (segX[i] <= pos) idx = i
+        return items.getOrNull(segs[idx].itemIndex)
+    }
+
+    private val gesture = android.view.GestureDetector(context,
+        object : android.view.GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                itemAt(e.x)?.let { onItemTap?.invoke(it) }
+                performClick()
+                return true
+            }
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                onDoubleTap?.invoke()
+                return true
+            }
+        })
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_UP && loopWidth > 0f) {
-            var pos = (event.x + offset) % loopWidth
-            if (pos < 0) pos += loopWidth
-            var idx = 0
-            for (i in segX.indices) if (segX[i] <= pos) idx = i
-            val item = items.getOrNull(segs[idx].itemIndex)
-            if (item != null) onItemTap?.invoke(item)
-            performClick()
-        }
+        gesture.onTouchEvent(event)
         return true
     }
 
