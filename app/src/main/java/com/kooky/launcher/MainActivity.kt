@@ -319,6 +319,7 @@ class MainActivity : Activity() {
         // インジケーター：数字は常に表示。ダブルタップでコントロールセンター（クイック設定）
         val arcGesture = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent): Boolean = true
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean { showWifiInfo(); return true }
             override fun onDoubleTap(e: MotionEvent): Boolean { openQuickSettings(); return true }
         })
         statusArc = StatusArcView(this).apply {
@@ -1322,6 +1323,205 @@ class MainActivity : Activity() {
         } catch (e: Exception) {}
         packageManager.getLaunchIntentForPackage(item.pkg)?.let {
             it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(it)
+        }
+    }
+
+    // ===== Wi-Fi情報＋速度測定（インジケーターを1回タップ） =====
+    private fun showWifiInfo() {
+        if (!readNet().first) {
+            Toast.makeText(this, "Wi-Fiにつながっていません", Toast.LENGTH_SHORT).show(); return
+        }
+        var ssid = "--"; var rssi = 0; var freq = 0; var rx = -1; var tx = -1
+        try {
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            @Suppress("DEPRECATION")
+            val info = wm.connectionInfo
+            ssid = info.ssid?.trim('"') ?: "--"
+            if (ssid.isEmpty() || ssid.contains("unknown ssid")) ssid = "（位置情報オンで表示）"
+            rssi = info.rssi
+            freq = info.frequency
+            if (android.os.Build.VERSION.SDK_INT >= 29) { rx = info.rxLinkSpeedMbps; tx = info.txLinkSpeedMbps }
+            if (rx <= 0) rx = info.linkSpeed
+        } catch (e: Exception) {}
+
+        val strength = when { rssi >= -55 -> "強い"; rssi >= -70 -> "普通"; rssi != 0 -> "弱い"; else -> "--" }
+        val band = when { freq <= 0 -> "--"; freq < 3000 -> "2.4 GHz"; freq < 5925 -> "5 GHz"; else -> "6 GHz" }
+        val ch = when {
+            freq <= 0 -> 0
+            freq == 2484 -> 14
+            freq < 3000 -> (freq - 2407) / 5
+            freq < 5925 -> (freq - 5000) / 5
+            else -> (freq - 5950) / 5
+        }
+
+        lateinit var dialog: AlertDialog
+        var alive = true
+        val card = menuCard()
+        val head = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(10))
+        }
+        head.addView(TextView(this).apply {
+            text = "Wi-Fi"; setTextColor(textColor); textSize = 15f; setTypeface(typeface, Typeface.BOLD)
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        head.addView(TextView(this).apply { text = "接続中"; setTextColor(orange); textSize = 12f })
+        card.addView(head)
+
+        fun infoRow(label: String, value: String, sub: String = "") {
+            card.addView(menuDivider())
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(18), dp(11), dp(18), dp(11))
+            }
+            row.addView(TextView(this).apply { text = label; setTextColor(grayText); textSize = 13f },
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(TextView(this).apply {
+                text = value; setTextColor(textColor); textSize = 14f; setTypeface(typeface, Typeface.BOLD)
+            })
+            if (sub.isNotEmpty()) row.addView(TextView(this).apply {
+                text = "  $sub"; setTextColor(grayText); textSize = 11f
+            })
+            card.addView(row)
+        }
+        infoRow("ネットワーク", ssid)
+        infoRow("電波", strength, if (rssi != 0) "$rssi dBm" else "")
+        infoRow("周波数", band, if (ch > 0) "ch $ch" else "")
+        infoRow("リンク速度", if (tx > 0) "$rx / $tx" else if (rx > 0) "$rx" else "--",
+            if (tx > 0) "Mbps 下り/上り" else "Mbps")
+
+        // 速度測定エリア
+        card.addView(menuDivider())
+        val area = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(12), dp(18), dp(14))
+        }
+        card.addView(area)
+
+        fun showButton(label: String) {
+            area.removeAllViews()
+            area.addView(TextView(this).apply {
+                text = label; setTextColor(orange); textSize = 13f; setTypeface(typeface, Typeface.BOLD)
+                gravity = Gravity.CENTER
+                setPadding(0, dp(9), 0, dp(9))
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(cornerR).toFloat(); setColor(Color.TRANSPARENT); setStroke(dp(2), orange)
+                }
+                isClickable = true
+                setOnClickListener { runSpeedTest(area, { alive }) { showButton("もう一度測る") } }
+            })
+        }
+        showButton("実際の速度を測る")
+
+        dialog = dialogBuilder().setView(card).create()
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        dialog.setOnDismissListener { alive = false }
+        dialog.show()
+    }
+
+    // 速度測定：応答時間（3回の平均）→ ダウンロード速度（最大25MB・最長8秒）
+    private fun runSpeedTest(area: LinearLayout, isAlive: () -> Boolean, onDone: () -> Unit) {
+        area.removeAllViews()
+        val status = TextView(this).apply { text = "測定中…"; setTextColor(grayText); textSize = 12f }
+        val track = FrameLayout(this).apply {
+            background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(divider) }
+        }
+        val bar = View(this).apply {
+            background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(orange) }
+        }
+        track.addView(bar, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT))
+        area.addView(status)
+        area.addView(track, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(4)).apply { topMargin = dp(6) })
+
+        thread {
+            var pingMs = -1L
+            var mbps = -1.0
+            try {
+                // 応答時間
+                val pings = ArrayList<Long>()
+                for (i in 0 until 3) {
+                    val t = System.nanoTime()
+                    val c = URL("https://speed.cloudflare.com/__down?bytes=0").openConnection() as HttpURLConnection
+                    c.connectTimeout = 5000; c.readTimeout = 5000; c.useCaches = false
+                    c.inputStream.use { it.readBytes() }
+                    c.disconnect()
+                    pings.add((System.nanoTime() - t) / 1_000_000)
+                }
+                pingMs = pings.sorted()[1]
+                // ダウンロード
+                val c = URL("https://speed.cloudflare.com/__down?bytes=25000000").openConnection() as HttpURLConnection
+                c.connectTimeout = 5000; c.readTimeout = 8000; c.useCaches = false
+                val start = System.nanoTime()
+                var total = 0L
+                var lastUi = 0L
+                c.inputStream.use { ins ->
+                    val buf = ByteArray(64 * 1024)
+                    while (isAlive()) {
+                        val n = ins.read(buf)
+                        if (n < 0) break
+                        total += n
+                        val el = (System.nanoTime() - start) / 1e9
+                        if (el > 8.0) break
+                        if (System.nanoTime() - lastUi > 150_000_000L && el > 0.2) {
+                            lastUi = System.nanoTime()
+                            val cur = total * 8 / el / 1_000_000
+                            val frac = (total / 25_000_000f).coerceAtMost(1f)
+                            runOnUiThread {
+                                status.text = "測定中… ${cur.toInt()} Mbps"
+                                bar.layoutParams = (bar.layoutParams as FrameLayout.LayoutParams).apply {
+                                    width = (track.width * frac).toInt()
+                                }
+                                bar.requestLayout()
+                            }
+                        }
+                    }
+                }
+                c.disconnect()
+                val el = (System.nanoTime() - start) / 1e9
+                if (el > 0) mbps = total * 8 / el / 1_000_000
+            } catch (e: Exception) {}
+
+            if (!isAlive()) return@thread
+            runOnUiThread {
+                area.removeAllViews()
+                if (mbps < 0) {
+                    area.addView(TextView(this).apply {
+                        text = "測定できませんでした"; setTextColor(grayText); textSize = 12f; gravity = Gravity.CENTER
+                    })
+                } else {
+                    val res = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                    fun cell(label: String, value: String, unit: String, color: Int) =
+                        LinearLayout(this).apply {
+                            orientation = LinearLayout.VERTICAL
+                            gravity = Gravity.CENTER
+                            addView(TextView(this@MainActivity).apply {
+                                text = label; setTextColor(grayText); textSize = 11f; gravity = Gravity.CENTER
+                            })
+                            addView(TextView(this@MainActivity).apply {
+                                text = SpannableString("$value $unit").apply {
+                                    setSpan(RelativeSizeSpan(0.5f), value.length, value.length + unit.length + 1,
+                                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                                }
+                                setTextColor(color); textSize = 22f; setTypeface(typeface, Typeface.BOLD)
+                                gravity = Gravity.CENTER
+                            })
+                        }
+                    res.addView(cell("下り", if (mbps >= 100) mbps.toInt().toString() else String.format(Locale.US, "%.1f", mbps), "Mbps", orange),
+                        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    res.addView(cell("応答", if (pingMs >= 0) pingMs.toString() else "--", "ms", textColor),
+                        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    area.addView(res)
+                }
+                onDone.let {
+                    val again = TextView(this).apply {
+                        text = "もう一度測る"; setTextColor(grayText); textSize = 12f; gravity = Gravity.CENTER
+                        setPadding(0, dp(10), 0, 0); isClickable = true
+                        setOnClickListener { runSpeedTest(area, isAlive, onDone) }
+                    }
+                    area.addView(again)
+                }
+            }
         }
     }
 
