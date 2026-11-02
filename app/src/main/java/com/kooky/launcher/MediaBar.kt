@@ -56,6 +56,8 @@ class MediaBar(context: Context) : FrameLayout(context) {
     private val prev = TextView(context)
     private val next = TextView(context)
     private val pill = TextView(context)
+    // 音に合わせて動くイコライザー（再生バーの左のすき間）
+    val eq = EqualizerView(context)
 
     init {
         visibility = GONE
@@ -80,7 +82,9 @@ class MediaBar(context: Context) : FrameLayout(context) {
         }
         // 右手で押しやすいように、ボタンは右寄せ（左に余白）
         // 前へ ｜ 10秒戻る ｜ 再生/停止 ｜ 10秒進む ｜ 次へ
-        row3.addView(View(context), LinearLayout.LayoutParams(0, 1, 1.4f))
+        val eqBox = FrameLayout(context).apply { setPadding(dp(4), 0, 0, 0) }
+        eqBox.addView(eq, LayoutParams(dp(31), dp(24), Gravity.CENTER_VERTICAL or Gravity.START))
+        row3.addView(eqBox, LinearLayout.LayoutParams(0, dp(30), 1.4f))
         row3.addView(btn(prev, "|◀", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.9f))
         row3.addView(btn(rw, "«", 20f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         row3.addView(btn(pp, "❚❚", 22f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -136,6 +140,7 @@ class MediaBar(context: Context) : FrameLayout(context) {
     fun start() {
         if (running) return
         running = true
+        eq.start()
         try {
             val m = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
             msm = m
@@ -148,6 +153,7 @@ class MediaBar(context: Context) : FrameLayout(context) {
 
     fun stop() {
         running = false
+        eq.stop()
         handler.removeCallbacks(ticker)
         try { msm?.removeOnActiveSessionsChangedListener(sessionsListener) } catch (e: Exception) {}
         try { controller?.unregisterCallback(ctrlCallback) } catch (e: Exception) {}
@@ -201,7 +207,7 @@ class MediaBar(context: Context) : FrameLayout(context) {
         val st = c?.playbackState
         val alive = st != null && st.state != PlaybackState.STATE_NONE &&
             st.state != PlaybackState.STATE_STOPPED && st.state != PlaybackState.STATE_ERROR
-        if (c == null || !alive) { setActive(false); return }
+        if (c == null || !alive) { eq.playing = false; setActive(false); return }
         setActive(true)
 
         val md = c.metadata
@@ -222,6 +228,8 @@ class MediaBar(context: Context) : FrameLayout(context) {
             fill.requestLayout()
         }
         pp.text = if (st.state == PlaybackState.STATE_PLAYING) "❚❚" else "▶"
+        val nowPlaying = st.state == PlaybackState.STATE_PLAYING
+        if (eq.playing != nowPlaying) eq.playing = nowPlaying
         // 前へ／次へに対応していないときは薄くする
         prev.alpha = if (st.actions and PlaybackState.ACTION_SKIP_TO_PREVIOUS != 0L) 1f else 0.3f
         next.alpha = if (st.actions and PlaybackState.ACTION_SKIP_TO_NEXT != 0L) 1f else 0.3f

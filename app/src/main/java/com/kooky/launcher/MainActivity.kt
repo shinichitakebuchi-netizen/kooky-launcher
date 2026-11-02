@@ -148,6 +148,7 @@ class MainActivity : Activity() {
     private val fallbackLat = 36.389
     private val fallbackLon = 139.063
     private val LOC_REQ = 1001
+    private val AUDIO_REQ = 1002
 
     private var showLabels = true
     private var useDesignIcon = true
@@ -436,7 +437,7 @@ class MainActivity : Activity() {
         }
 
         mediaBar = MediaBar(this).apply {
-            onActiveChanged = { updateTicker() }
+            onActiveChanged = { active -> updateTicker(); if (active) maybeAskAudioPermission() }
         }
         ticker = TickerView(this).apply {
             visibility = View.GONE
@@ -1548,6 +1549,15 @@ class MainActivity : Activity() {
         }
     }
 
+    // 音に合わせたイコライザー用：最初に再生バーが出たときに1回だけ許可を聞く
+    private fun maybeAskAudioPermission() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) return
+        if (prefs.getBoolean("asked_audio", false)) return
+        prefs.edit().putBoolean("asked_audio", true).apply()
+        Toast.makeText(this, "音に合わせてバーを動かすために「マイク」の許可を使います（録音はしません）", Toast.LENGTH_LONG).show()
+        requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), AUDIO_REQ)
+    }
+
     // 掲示板の更新（再生バーとは別に、検索バーの上でいつも流す）
     private fun updateTicker() {
         ticker.setItems(NotificationService.items)
@@ -1801,6 +1811,9 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == AUDIO_REQ) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) mediaBar.eq.restart()
+        }
         if (requestCode == LOC_REQ) {
             updateWeatherAtCurrentLocation(false)
         }
