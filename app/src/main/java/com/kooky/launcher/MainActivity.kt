@@ -83,6 +83,7 @@ class MainActivity : Activity() {
     private lateinit var statusArc: StatusArcView
     private lateinit var dataStat: StatItemView
     private lateinit var ticker: TickerView
+    private lateinit var mediaBar: MediaBar
     private lateinit var storageStat: StatItemView
     private lateinit var robot: ImageView
     private lateinit var rootFrame: FrameLayout
@@ -296,7 +297,7 @@ class MainActivity : Activity() {
         NotificationService.onChange = {
             runOnUiThread {
                 appAdapter.notifyDataSetChanged()
-                if (::ticker.isInitialized) ticker.setItems(NotificationService.items)
+                if (::ticker.isInitialized) updateTicker()
             }
         }
 
@@ -434,6 +435,9 @@ class MainActivity : Activity() {
             addView(searchIcon, LinearLayout.LayoutParams(dp(40), dp(40)))
         }
 
+        mediaBar = MediaBar(this).apply {
+            onActiveChanged = { updateTicker() }
+        }
         ticker = TickerView(this).apply {
             visibility = View.GONE
             onItemTap = { openNotification(it) }
@@ -575,7 +579,7 @@ class MainActivity : Activity() {
     private fun arrangeLayout() {
         val land = resources.configuration.orientation ==
             android.content.res.Configuration.ORIENTATION_LANDSCAPE
-        for (v in listOf<View>(topArea, ticker, searchBarRow, grid, rightCol)) {
+        for (v in listOf<View>(topArea, ticker, mediaBar, searchBarRow, grid, rightCol)) {
             (v.parent as? ViewGroup)?.removeView(v)
         }
         rightCol.removeAllViews()
@@ -588,10 +592,15 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             setMargins(barMargin, 0, barMargin, dp(8))
         }
+        val mediaLp = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            setMargins(barMargin, 0, barMargin, dp(6))
+        }
         if (land) {
             contentLayout.orientation = LinearLayout.HORIZONTAL
             contentLayout.addView(topArea, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
             rightCol.addView(ticker, tickerLp)
+            rightCol.addView(mediaBar, mediaLp)
             rightCol.addView(searchBarRow, barLp)
             rightCol.addView(grid, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(2 * cellHeightDp)))
@@ -600,6 +609,7 @@ class MainActivity : Activity() {
             contentLayout.orientation = LinearLayout.VERTICAL
             contentLayout.addView(topArea, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             contentLayout.addView(ticker, tickerLp)
+            contentLayout.addView(mediaBar, mediaLp)
             contentLayout.addView(searchBarRow, barLp)
             contentLayout.addView(grid, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(gridRows * cellHeightDp)))
@@ -658,6 +668,7 @@ class MainActivity : Activity() {
         statusArc.lightMode = isLight
         dataStat.lightMode = isLight
         ticker.lightMode = isLight
+        mediaBar.lightMode = isLight
         storageStat.lightMode = isLight
         appAdapter.notifyDataSetChanged()
         thread { LockWallpaper.update(this) }
@@ -1525,6 +1536,17 @@ class MainActivity : Activity() {
         }
     }
 
+    // 再生中は掲示板のかわりに再生バーを出す
+    private fun updateTicker() {
+        if (mediaBar.active) {
+            ticker.stop()
+            ticker.visibility = View.GONE
+        } else {
+            ticker.setItems(NotificationService.items)
+            ticker.start()
+        }
+    }
+
     // 上から引き下ろす通知パネルを開く
     @android.annotation.SuppressLint("WrongConstant")
     private fun openNotificationPanel() {
@@ -1659,8 +1681,8 @@ class MainActivity : Activity() {
         timeHandler.post(robotAnim)
         timeHandler.removeCallbacks(statsTick)
         timeHandler.post(statsTick)
-        ticker.setItems(NotificationService.items)
-        ticker.start()
+        mediaBar.start()
+        updateTicker()
         lastInteractMs = System.currentTimeMillis()
         if (talking) { switchingBubble = true; aiPopup?.dismiss(); switchingBubble = false; talking = false }
         if (!showRobot) {
@@ -1682,6 +1704,7 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(robotAnim)
         timeHandler.removeCallbacks(statsTick)
         ticker.stop()
+        mediaBar.stop()
         statusArc.stopBlink()
         switchingBubble = true
         aiPopup?.dismiss()
