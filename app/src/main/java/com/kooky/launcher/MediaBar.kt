@@ -28,7 +28,6 @@ class MediaBar(context: Context) : FrameLayout(context) {
     var onActiveChanged: ((Boolean) -> Unit)? = null
 
     private val seekSec = 10
-    private val speeds = floatArrayOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
     private val orange = Color.parseColor("#FF8C00")
     private val ink get() = if (lightMode) Color.parseColor("#1C1C1E") else Color.WHITE
     private val sub get() = if (lightMode) Color.parseColor("#6E6E73") else Color.parseColor("#9A9AA2")
@@ -56,7 +55,6 @@ class MediaBar(context: Context) : FrameLayout(context) {
     private val ff = TextView(context)
     private val prev = TextView(context)
     private val next = TextView(context)
-    private val sp = TextView(context)
     private val pill = TextView(context)
 
     init {
@@ -80,18 +78,14 @@ class MediaBar(context: Context) : FrameLayout(context) {
             text = t; textSize = size; gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD)
             isClickable = true; setPadding(0, dp(10), 0, dp(10))
         }
-        // 前へ ｜ 10秒戻る ｜ 再生/停止 ｜ 10秒進む ｜ 次へ ｜ 速度
-        row3.addView(btn(prev, "|◀", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f))
+        // 右手で押しやすいように、ボタンは右寄せ（左に余白）
+        // 前へ ｜ 10秒戻る ｜ 再生/停止 ｜ 10秒進む ｜ 次へ
+        row3.addView(View(context), LinearLayout.LayoutParams(0, 1, 1.4f))
+        row3.addView(btn(prev, "|◀", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.9f))
         row3.addView(btn(rw, "«", 20f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         row3.addView(btn(pp, "❚❚", 22f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         row3.addView(btn(ff, "»", 20f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row3.addView(btn(next, "▶|", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f))
-        sp.apply {
-            textSize = 14f; setTypeface(typeface, Typeface.BOLD); setTextColor(orange)
-            setPadding(dp(10), dp(4), dp(10), dp(4)); isClickable = true
-            background = GradientDrawable().apply { cornerRadius = dp(6).toFloat(); setStroke(dp(2), orange) }
-        }
-        row3.addView(sp)
+        row3.addView(btn(next, "▶|", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.9f))
         col.addView(row3)
 
         addView(col, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
@@ -109,7 +103,6 @@ class MediaBar(context: Context) : FrameLayout(context) {
         next.setOnClickListener { skip(true) }
         ff.setOnClickListener { seekBy(seekSec) }
         pp.setOnClickListener { togglePlay() }
-        sp.setOnClickListener { nextSpeed() }
         restyle()
     }
 
@@ -232,8 +225,6 @@ class MediaBar(context: Context) : FrameLayout(context) {
         // 前へ／次へに対応していないときは薄くする
         prev.alpha = if (st.actions and PlaybackState.ACTION_SKIP_TO_PREVIOUS != 0L) 1f else 0.3f
         next.alpha = if (st.actions and PlaybackState.ACTION_SKIP_TO_NEXT != 0L) 1f else 0.3f
-        val spd = if (st.playbackSpeed > 0f) st.playbackSpeed else 1f
-        sp.text = trimSpeed(spd) + "x"
     }
 
     private fun trimSpeed(v: Float): String {
@@ -287,20 +278,4 @@ class MediaBar(context: Context) : FrameLayout(context) {
         handler.postDelayed({ refresh() }, 300)
     }
 
-    private fun nextSpeed() {
-        val c = controller ?: return
-        if (android.os.Build.VERSION.SDK_INT < 29) { flash("この端末は速度変更に対応していません"); return }
-        val cur = c.playbackState?.playbackSpeed ?: 1f
-        var idx = speeds.indexOfFirst { kotlin.math.abs(it - cur) < 0.01f }
-        idx = if (idx < 0) 2 else (idx + 1) % speeds.size
-        val target = speeds[idx]
-        try { c.transportControls.setPlaybackSpeed(target) } catch (e: Exception) {}
-        flash("速度 ${trimSpeed(target)}x")
-        // アプリが受け付けなかったら知らせる
-        handler.postDelayed({
-            val now = controller?.playbackState?.playbackSpeed ?: 1f
-            if (kotlin.math.abs(now - target) > 0.01f) flash("このアプリは速度変更に対応していません")
-            refresh()
-        }, 900)
-    }
 }
