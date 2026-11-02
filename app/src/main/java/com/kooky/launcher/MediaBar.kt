@@ -54,6 +54,8 @@ class MediaBar(context: Context) : FrameLayout(context) {
     private val rw = TextView(context)
     private val pp = TextView(context)
     private val ff = TextView(context)
+    private val prev = TextView(context)
+    private val next = TextView(context)
     private val sp = TextView(context)
     private val pill = TextView(context)
 
@@ -78,9 +80,12 @@ class MediaBar(context: Context) : FrameLayout(context) {
             text = t; textSize = size; gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD)
             isClickable = true; setPadding(0, dp(10), 0, dp(10))
         }
-        row3.addView(btn(rw, "« ${seekSec}秒", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        // 前へ ｜ 10秒戻る ｜ 再生/停止 ｜ 10秒進む ｜ 次へ ｜ 速度
+        row3.addView(btn(prev, "|◀", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f))
+        row3.addView(btn(rw, "«${seekSec}", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         row3.addView(btn(pp, "❚❚", 22f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row3.addView(btn(ff, "${seekSec}秒 »", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row3.addView(btn(ff, "${seekSec}»", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row3.addView(btn(next, "▶|", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f))
         sp.apply {
             textSize = 14f; setTypeface(typeface, Typeface.BOLD); setTextColor(orange)
             setPadding(dp(10), dp(4), dp(10), dp(4)); isClickable = true
@@ -100,6 +105,8 @@ class MediaBar(context: Context) : FrameLayout(context) {
             Gravity.CENTER_HORIZONTAL or Gravity.TOP))
 
         rw.setOnClickListener { seekBy(-seekSec) }
+        prev.setOnClickListener { skip(false) }
+        next.setOnClickListener { skip(true) }
         ff.setOnClickListener { seekBy(seekSec) }
         pp.setOnClickListener { togglePlay() }
         sp.setOnClickListener { nextSpeed() }
@@ -110,6 +117,7 @@ class MediaBar(context: Context) : FrameLayout(context) {
         titleText.setTextColor(ink)
         posText.setTextColor(sub); lenText.setTextColor(sub)
         rw.setTextColor(ink); ff.setTextColor(ink); pp.setTextColor(orange)
+        prev.setTextColor(ink); next.setTextColor(ink)
         track.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(trackColor) }
         fill.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(orange) }
     }
@@ -221,6 +229,9 @@ class MediaBar(context: Context) : FrameLayout(context) {
             fill.requestLayout()
         }
         pp.text = if (st.state == PlaybackState.STATE_PLAYING) "❚❚" else "▶"
+        // 前へ／次へに対応していないときは薄くする
+        prev.alpha = if (st.actions and PlaybackState.ACTION_SKIP_TO_PREVIOUS != 0L) 1f else 0.3f
+        next.alpha = if (st.actions and PlaybackState.ACTION_SKIP_TO_NEXT != 0L) 1f else 0.3f
         val spd = if (st.playbackSpeed > 0f) st.playbackSpeed else 1f
         sp.text = trimSpeed(spd) + "x"
     }
@@ -252,6 +263,19 @@ class MediaBar(context: Context) : FrameLayout(context) {
             flash(if (sec < 0) "${-sec}秒 戻った" else "${sec}秒 進んだ")
         } catch (e: Exception) { flash("このアプリは操作できません") }
         handler.postDelayed({ refresh() }, 300)
+    }
+
+    // 前の曲・動画／次の曲・動画
+    private fun skip(forward: Boolean) {
+        val c = controller ?: return
+        val st = c.playbackState ?: return
+        val action = if (forward) PlaybackState.ACTION_SKIP_TO_NEXT else PlaybackState.ACTION_SKIP_TO_PREVIOUS
+        if (st.actions and action == 0L) { flash(if (forward) "次へは使えません" else "前へは使えません"); return }
+        try {
+            if (forward) c.transportControls.skipToNext() else c.transportControls.skipToPrevious()
+            flash(if (forward) "次へ" else "前へ")
+        } catch (e: Exception) {}
+        handler.postDelayed({ refresh() }, 500)
     }
 
     private fun togglePlay() {
