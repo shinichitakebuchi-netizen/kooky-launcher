@@ -574,12 +574,30 @@ class MainActivity : Activity() {
         } catch (e: Exception) {}
     }
 
+    // アプリ一覧の箱：再生中は一番上に再生バー（アプリ1段分）が入り、アプリが1段下にずれる
+    private val gridBox: LinearLayout by lazy {
+        LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    }
+
+    private fun buildGridBox(): LinearLayout {
+        (mediaBar.parent as? ViewGroup)?.removeView(mediaBar)
+        (grid.parent as? ViewGroup)?.removeView(grid)
+        gridBox.removeAllViews()
+        val side = dp(sideMarginDp + cellPadDp)
+        gridBox.addView(mediaBar, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(cellHeightDp)).apply {
+            setMargins(side, 0, side, 0)
+        })
+        gridBox.addView(grid, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        return gridBox
+    }
+
     // 縦向き：上に時計まわり、下にアプリ（3段）
     // 横向き：左右50%ずつ。左に時計まわり、右に掲示板・検索・アプリ（2段）
     private fun arrangeLayout() {
         val land = resources.configuration.orientation ==
             android.content.res.Configuration.ORIENTATION_LANDSCAPE
-        for (v in listOf<View>(topArea, ticker, mediaBar, searchBarRow, grid, rightCol)) {
+        for (v in listOf<View>(topArea, ticker, searchBarRow, rightCol, gridBox)) {
             (v.parent as? ViewGroup)?.removeView(v)
         }
         rightCol.removeAllViews()
@@ -592,26 +610,20 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             setMargins(barMargin, 0, barMargin, dp(8))
         }
-        val mediaLp = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            setMargins(barMargin, 0, barMargin, dp(6))
-        }
         if (land) {
             contentLayout.orientation = LinearLayout.HORIZONTAL
             contentLayout.addView(topArea, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
             rightCol.addView(ticker, tickerLp)
-            rightCol.addView(mediaBar, mediaLp)
             rightCol.addView(searchBarRow, barLp)
-            rightCol.addView(grid, LinearLayout.LayoutParams(
+            rightCol.addView(buildGridBox(), LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(2 * cellHeightDp)))
             contentLayout.addView(rightCol, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
         } else {
             contentLayout.orientation = LinearLayout.VERTICAL
             contentLayout.addView(topArea, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             contentLayout.addView(ticker, tickerLp)
-            contentLayout.addView(mediaBar, mediaLp)
             contentLayout.addView(searchBarRow, barLp)
-            contentLayout.addView(grid, LinearLayout.LayoutParams(
+            contentLayout.addView(buildGridBox(), LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(gridRows * cellHeightDp)))
         }
     }
@@ -1536,15 +1548,10 @@ class MainActivity : Activity() {
         }
     }
 
-    // 再生中は掲示板のかわりに再生バーを出す
+    // 掲示板の更新（再生バーとは別に、検索バーの上でいつも流す）
     private fun updateTicker() {
-        if (mediaBar.active) {
-            ticker.stop()
-            ticker.visibility = View.GONE
-        } else {
-            ticker.setItems(NotificationService.items)
-            ticker.start()
-        }
+        ticker.setItems(NotificationService.items)
+        ticker.start()
     }
 
     // 上から引き下ろす通知パネルを開く

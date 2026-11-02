@@ -45,8 +45,8 @@ class MediaBar(context: Context) : FrameLayout(context) {
         private set
 
     // ===== 見た目 =====
-    private val appText = TextView(context).apply { textSize = 11f; setTypeface(typeface, Typeface.BOLD); setTextColor(orange) }
-    private val titleText = TextView(context).apply { textSize = 11f; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+    private val appText = TextView(context).apply { textSize = 12f; setTypeface(typeface, Typeface.BOLD); setTextColor(orange) }
+    private val titleText = TextView(context).apply { textSize = 12f; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
     private val posText = TextView(context).apply { textSize = 10f; fontFeatureSettings = "tnum" }
     private val lenText = TextView(context).apply { textSize = 10f; fontFeatureSettings = "tnum" }
     private val track = FrameLayout(context)
@@ -76,20 +76,20 @@ class MediaBar(context: Context) : FrameLayout(context) {
         val row3 = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         fun btn(v: TextView, t: String, size: Float) = v.apply {
             text = t; textSize = size; gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD)
-            isClickable = true; setPadding(0, dp(6), 0, dp(6))
+            isClickable = true; setPadding(0, dp(10), 0, dp(10))
         }
-        row3.addView(btn(rw, "« ${seekSec}秒", 13f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row3.addView(btn(pp, "❚❚", 18f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row3.addView(btn(ff, "${seekSec}秒 »", 13f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row3.addView(btn(rw, "« ${seekSec}秒", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row3.addView(btn(pp, "❚❚", 22f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row3.addView(btn(ff, "${seekSec}秒 »", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         sp.apply {
-            textSize = 12f; setTypeface(typeface, Typeface.BOLD); setTextColor(orange)
-            setPadding(dp(8), dp(2), dp(8), dp(2)); isClickable = true
+            textSize = 14f; setTypeface(typeface, Typeface.BOLD); setTextColor(orange)
+            setPadding(dp(10), dp(4), dp(10), dp(4)); isClickable = true
             background = GradientDrawable().apply { cornerRadius = dp(6).toFloat(); setStroke(dp(2), orange) }
         }
         row3.addView(sp)
         col.addView(row3)
 
-        addView(col, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        addView(col, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
 
         pill.apply {
             textSize = 12f; setTypeface(typeface, Typeface.BOLD); setTextColor(Color.BLACK)
