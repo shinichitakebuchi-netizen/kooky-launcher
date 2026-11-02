@@ -50,11 +50,11 @@ class MediaBar(context: Context) : FrameLayout(context) {
     private val lenText = TextView(context).apply { textSize = 10f; fontFeatureSettings = "tnum" }
     private val track = FrameLayout(context)
     private val fill = View(context)
-    private val rw = TextView(context)
-    private val pp = TextView(context)
-    private val ff = TextView(context)
-    private val prev = TextView(context)
-    private val next = TextView(context)
+    private val rw = MediaIconView(context, MediaIconView.Kind.REWIND)
+    private val pp = MediaIconView(context, MediaIconView.Kind.PLAY_PAUSE)
+    private val ff = MediaIconView(context, MediaIconView.Kind.FORWARD)
+    private val prev = MediaIconView(context, MediaIconView.Kind.PREV)
+    private val next = MediaIconView(context, MediaIconView.Kind.NEXT)
     private val pill = TextView(context)
     // 音に合わせて動くイコライザー（再生バーの左のすき間）
     val eq = EqualizerView(context)
@@ -76,20 +76,20 @@ class MediaBar(context: Context) : FrameLayout(context) {
         col.addView(row2, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
 
         val row3 = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        fun btn(v: TextView, t: String, size: Float) = v.apply {
-            text = t; textSize = size; gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD)
-            isClickable = true; setPadding(0, dp(10), 0, dp(10))
+        fun btn(v: MediaIconView, sizeDp: Int) = v.apply {
+            iconPx = dp(sizeDp).toFloat()
+            isClickable = true
         }
         // 右手で押しやすいように、ボタンは右寄せ（左に余白）
         // 前へ ｜ 10秒戻る ｜ 再生/停止 ｜ 10秒進む ｜ 次へ
         val eqBox = FrameLayout(context).apply { setPadding(dp(4), 0, 0, 0) }
         eqBox.addView(eq, LayoutParams(dp(31), dp(24), Gravity.CENTER_VERTICAL or Gravity.START))
         row3.addView(eqBox, LinearLayout.LayoutParams(0, dp(30), 1.4f))
-        row3.addView(btn(prev, "|◀", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.9f))
-        row3.addView(btn(rw, "«", 20f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row3.addView(btn(pp, "❚❚", 22f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row3.addView(btn(ff, "»", 20f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row3.addView(btn(next, "▶|", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.9f))
+        row3.addView(btn(prev, 22), LinearLayout.LayoutParams(0, dp(44), 0.9f))
+        row3.addView(btn(rw, 26), LinearLayout.LayoutParams(0, dp(44), 1f))
+        row3.addView(btn(pp, 34), LinearLayout.LayoutParams(0, dp(44), 1f))
+        row3.addView(btn(ff, 26), LinearLayout.LayoutParams(0, dp(44), 1f))
+        row3.addView(btn(next, 22), LinearLayout.LayoutParams(0, dp(44), 0.9f))
         col.addView(row3)
 
         addView(col, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
@@ -113,8 +113,8 @@ class MediaBar(context: Context) : FrameLayout(context) {
     private fun restyle() {
         titleText.setTextColor(ink)
         posText.setTextColor(sub); lenText.setTextColor(sub)
-        rw.setTextColor(ink); ff.setTextColor(ink); pp.setTextColor(orange)
-        prev.setTextColor(ink); next.setTextColor(ink)
+        rw.color = ink; ff.color = ink; pp.color = orange
+        prev.color = ink; next.color = ink
         track.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(trackColor) }
         fill.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(orange) }
     }
@@ -227,7 +227,7 @@ class MediaBar(context: Context) : FrameLayout(context) {
             fill.layoutParams = (fill.layoutParams as LayoutParams).apply { width = (track.width * ratio).toInt() }
             fill.requestLayout()
         }
-        pp.text = if (st.state == PlaybackState.STATE_PLAYING) "❚❚" else "▶"
+        pp.playing = st.state == PlaybackState.STATE_PLAYING
         val nowPlaying = st.state == PlaybackState.STATE_PLAYING
         if (eq.playing != nowPlaying) eq.playing = nowPlaying
         // 前へ／次へに対応していないときは薄くする
