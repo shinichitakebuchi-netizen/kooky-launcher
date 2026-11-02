@@ -82,9 +82,9 @@ class MediaBar(context: Context) : FrameLayout(context) {
         }
         // 前へ ｜ 10秒戻る ｜ 再生/停止 ｜ 10秒進む ｜ 次へ ｜ 速度
         row3.addView(btn(prev, "|◀", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f))
-        row3.addView(btn(rw, "«${seekSec}", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row3.addView(btn(rw, "«", 20f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         row3.addView(btn(pp, "❚❚", 22f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        row3.addView(btn(ff, "${seekSec}»", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row3.addView(btn(ff, "»", 20f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         row3.addView(btn(next, "▶|", 15f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.8f))
         sp.apply {
             textSize = 14f; setTypeface(typeface, Typeface.BOLD); setTextColor(orange)
