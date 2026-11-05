@@ -22,6 +22,14 @@ class StatItemView(context: Context) : View(context) {
         set(v) { field = v; invalidate() }
     var lightMode: Boolean = false
         set(v) { field = v; invalidate() }
+    // 文字のフォント（設定の「文字」で選んだもの）
+    var font: android.graphics.Typeface = android.graphics.Typeface.SERIF
+        set(v) {
+            field = v
+            valuePaint.typeface = android.graphics.Typeface.create(v, android.graphics.Typeface.BOLD)
+            unitPaint.typeface = v
+            invalidate()
+        }
 
     private val orange = Wa.BENIHI          // ゲージ：紅緋
     private val red = Wa.KARAKURENAI        // 上限近く：韓紅花

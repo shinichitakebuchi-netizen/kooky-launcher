@@ -15,6 +15,15 @@ class TickerView(context: Context) : View(context) {
 
     var lightMode: Boolean = false
         set(v) { field = v; invalidate() }
+    // 文字のフォント（流れる通知）
+    var font: Typeface = Typeface.SERIF
+        set(v) {
+            field = v
+            normal.typeface = v
+            bold.typeface = Typeface.create(v, Typeface.BOLD)
+            if (items.isNotEmpty()) rebuild()   // 文字の幅が変わるので並びを測り直す
+            invalidate()
+        }
     var onItemTap: ((NotificationService.Item) -> Unit)? = null
 
     private var items: List<NotificationService.Item> = emptyList()

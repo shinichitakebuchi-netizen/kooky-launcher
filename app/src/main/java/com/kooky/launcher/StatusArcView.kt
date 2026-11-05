@@ -25,6 +25,13 @@ class StatusArcView(context: Context) : View(context) {
         set(value) { field = value; invalidate() }
     var lightMode: Boolean = false
         set(value) { field = value; invalidate() }
+    // 文字のフォント（てっぺんの数字）
+    var font: android.graphics.Typeface = android.graphics.Typeface.SERIF
+        set(value) {
+            field = value
+            textPaint.typeface = android.graphics.Typeface.create(value, android.graphics.Typeface.BOLD)
+            invalidate()
+        }
 
     private val orange = Wa.BENIHI        // 残量・電波：紅緋
     private val green = Wa.WAKATAKE       // 充電中：若竹色

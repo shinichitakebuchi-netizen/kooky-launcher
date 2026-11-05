@@ -238,6 +238,8 @@ class MainActivity : Activity() {
         useDesignIcon = prefs.getBoolean("use_design_icon", true)
         showInitial = prefs.getBoolean("show_initial", true)
         themeMode = prefs.getInt("theme_mode", 0)
+        fontIndex = prefs.getInt("font", 0).coerceIn(0, AppFonts.names.size - 1)
+        appTf = AppFonts.typeface(this, fontIndex)
         isLight = computeLight()
         loadCategories()
 
@@ -553,6 +555,34 @@ class MainActivity : Activity() {
         else -> "ダーク"
     }
 
+    // ===== 文字のフォント（縁と同じ3種類） =====
+    private var fontIndex = 0
+    private var appTf: Typeface = Typeface.SERIF
+    private val FIXED_FONT = "fixedFont"   // このタグの文字は自分のフォントのまま（設定の見本など）
+
+    // 画面の中の文字をすべて選んだフォントに（太字などの書体の強さはそのまま）
+    private fun applyFont(v: View?) {
+        when (v) {
+            null -> return
+            is StatItemView -> v.font = appTf
+            is StatusArcView -> v.font = appTf
+            is TickerView -> v.font = appTf
+            is TextView -> if (v.tag != FIXED_FONT) {
+                val style = v.typeface?.style ?: Typeface.NORMAL
+                v.typeface = Typeface.create(appTf, style)
+            }
+            is ViewGroup -> for (i in 0 until v.childCount) applyFont(v.getChildAt(i))
+        }
+    }
+
+    private fun setFont(i: Int) {
+        fontIndex = i
+        appTf = AppFonts.typeface(this, i)
+        prefs.edit().putInt("font", i).apply()
+        applyFont(window.decorView)
+        appAdapter.notifyDataSetChanged()
+    }
+
     // 画面全体に今のテーマ色を反映
     private fun applyTheme() {
         isLight = computeLight()
@@ -570,6 +600,7 @@ class MainActivity : Activity() {
         ticker.lightMode = isLight
         mediaBar.lightMode = isLight
         storageStat.lightMode = isLight
+        applyFont(window.decorView)
         appAdapter.notifyDataSetChanged()
         thread { LockWallpaper.update(this) }
     }
@@ -688,6 +719,7 @@ class MainActivity : Activity() {
         }
         showButton("実際の速度を測る")
 
+        applyFont(card)
         dialog = dialogBuilder().setView(card).create()
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
         dialog.setOnDismissListener { alive = false }
@@ -707,6 +739,7 @@ class MainActivity : Activity() {
         track.addView(bar, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT))
         area.addView(status)
         area.addView(track, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(4)).apply { topMargin = dp(6) })
+        applyFont(area)
 
         thread {
             var pingMs = -1L
@@ -759,6 +792,7 @@ class MainActivity : Activity() {
             if (!isAlive()) return@thread
             runOnUiThread {
                 area.removeAllViews()
+                area.post { applyFont(area) }   // 結果の文字も選んだフォントに
                 if (mbps < 0) {
                     area.addView(TextView(this).apply {
                         text = "測定できませんでした"; setTextColor(grayText); textSize = 12f; gravity = Gravity.CENTER
@@ -1355,8 +1389,9 @@ class MainActivity : Activity() {
     private fun renderSettings() {
         val col = settingsCol ?: return
         col.removeAllViews()
-        val serif = Typeface.create(Typeface.SERIF, Typeface.NORMAL)
-        val serifBold = Typeface.create(Typeface.SERIF, Typeface.BOLD)
+        // 見出しも本文も、設定の「文字」で選んだフォント
+        val serif = Typeface.create(appTf, Typeface.NORMAL)
+        val serifBold = Typeface.create(appTf, Typeface.BOLD)
 
         fun rule(thin: Boolean = false) = View(this).apply {
             setBackgroundColor(SUMI_LINE)
@@ -1475,6 +1510,36 @@ class MainActivity : Activity() {
         col.addView(View(this), LinearLayout.LayoutParams(1, dp(10)))
         note("オートは、朝6時から夜9時までライト、それ以外はダークになります。")
 
+        // ── 文字 ──
+        section("文字")
+        col.addView(View(this), LinearLayout.LayoutParams(1, dp(14)))
+        AppFonts.names.forEachIndexed { i, name ->
+            val sel = i == fontIndex
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(16), dp(12), dp(16), dp(12))
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(2).toFloat(); setColor(Color.TRANSPARENT)
+                    // 選択中は鳥の子色、それ以外は利休鼠の細い枠
+                    setStroke(dp(1), if (sel) KINARI else SUMI_LINE)
+                }
+                isClickable = true
+                setOnClickListener { if (i != fontIndex) { setFont(i); renderSettings() } }
+            }
+            // 見本はそのフォントで表示（全体のフォント変更の対象外）
+            row.addView(TextView(this).apply {
+                text = "庵　いおり"; setTextColor(KINARI); textSize = 22f
+                typeface = AppFonts.typeface(this@MainActivity, i); tag = FIXED_FONT
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(TextView(this).apply { text = name; setTextColor(USUZUMI); textSize = 12f })
+            col.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                if (i > 0) topMargin = dp(10)
+            })
+        }
+        col.addView(View(this), LinearLayout.LayoutParams(1, dp(10)))
+        note("Kaisei Tokumin・Yuji Syuku は SIL Open Font License 1.1 の無料フォントです。")
+
         // ── 通信量 ──
         section("通信量")
         valueRow("締め日", closeDayLabel()) { showDataSettings() }
@@ -1515,6 +1580,7 @@ class MainActivity : Activity() {
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(56)
         })
+        applyFont(col)
     }
 
     // ===== バックアップ（書き出し／読み込み） =====
@@ -1719,6 +1785,7 @@ class MainActivity : Activity() {
             })
         }
 
+        applyFont(card)
         dialog = dialogBuilder().setView(card).create()
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
         // 閉じたときに回数の並び替えを反映
@@ -2151,7 +2218,7 @@ class MainActivity : Activity() {
             if (ch.isNotEmpty()) {
                 val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = textColor; textSize = size * 0.42f
-                    textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT
+                    textAlign = Paint.Align.CENTER; typeface = appTf
                 }
                 val cy = size / 2f - (tp.descent() + tp.ascent()) / 2f
                 canvas.drawText(ch, size / 2f, cy, tp)
@@ -2204,6 +2271,7 @@ class MainActivity : Activity() {
                 setTextColor(textColor); textSize = 12f
                 gravity = Gravity.CENTER; maxLines = 1
                 setPadding(0, dp(4), 0, 0)
+                typeface = appTf
             }
             cell.addView(label)
             return cell
