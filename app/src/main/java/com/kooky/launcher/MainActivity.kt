@@ -1883,7 +1883,7 @@ class MainActivity : Activity() {
     }
 
     private fun openUsageAccess() {
-        Toast.makeText(this, "「使用状況へのアクセス」でKooky Launcherを許可してください", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "「使用状況へのアクセス」で「庵」を許可してください", Toast.LENGTH_LONG).show()
         try {
             startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (e: Exception) {}
@@ -2273,7 +2273,7 @@ class MainActivity : Activity() {
                             Toast.makeText(this, "${n}件を復元しました", Toast.LENGTH_SHORT).show()
                             recreate()
                         } catch (e: Exception) {
-                            Toast.makeText(this, "Kooky Launcherのバックアップではないようです", Toast.LENGTH_LONG).show()
+                            Toast.makeText(this, "庵のバックアップではないようです", Toast.LENGTH_LONG).show()
                         }
                     }
                     .setNegativeButton("キャンセル", null)
@@ -2535,7 +2535,7 @@ class MainActivity : Activity() {
         if (!enabled && !prefs.getBoolean("asked_notif", false)) {
             prefs.edit().putBoolean("asked_notif", true).apply()
             Toast.makeText(this,
-                "通知バッジを使うには「通知へのアクセス」でKooky Launcherを許可してください",
+                "通知バッジを使うには「通知へのアクセス」で「庵」を許可してください",
                 Toast.LENGTH_LONG).show()
             try {
                 startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
