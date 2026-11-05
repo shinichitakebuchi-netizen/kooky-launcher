@@ -52,12 +52,10 @@ class StatItemView(context: Context) : View(context) {
         unitPaint.color = sub
         val vw = valuePaint.measureText(value)
         val uw = unitPaint.measureText(unit)
-        val total = icon + gap + vw + gap * 0.5f + uw
+        // アイコンなし：数字と単位だけを真ん中に
+        val total = vw + gap * 0.5f + uw
         var x = (w - total) / 2f
         val rowMid = 11f * d
-
-        drawIcon(canvas, x, rowMid - icon / 2f, icon, accent)
-        x += icon + gap
         val base = rowMid - (valuePaint.descent() + valuePaint.ascent()) / 2f
         canvas.drawText(value, x, base, valuePaint)
         x += vw + gap * 0.5f
@@ -65,7 +63,7 @@ class StatItemView(context: Context) : View(context) {
 
         // ゲージ
         val gw = 84f * d
-        val gh = 3.5f * d
+        val gh = 1f * resources.displayMetrics.density   // 細い一本線
         val gx = (w - gw) / 2f
         val gy = 27f * d
         fill.color = track

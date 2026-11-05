@@ -72,7 +72,8 @@ class StatusArcView(context: Context) : View(context) {
         val cy = height / 2f
         val u = minOf(width, height).toFloat()
         val r = u * 0.40f
-        val sw = u * 0.075f
+        val dd = resources.displayMetrics.density
+        val sw = 1.5f * dd          // アプリ枠と同じくらいの細い線
         val start = 135f
         val sweep = 270f
         val rect = RectF(cx - r, cy - r, cx + r, cy + r)
@@ -83,7 +84,7 @@ class StatusArcView(context: Context) : View(context) {
         val pct = (ratio * 100).toInt().toString()
         textPaint.textSize = u * 0.20f
         val gapDeg = if (showBatteryNumber)
-            Math.toDegrees(((textPaint.measureText(pct) + sw * 2.6f) / r).toDouble()).toFloat()
+            Math.toDegrees(((textPaint.measureText(pct) + 7f * dd) / r).toDouble()).toFloat()
         else 0f
         val topA = 270f
         val gapL = topA - gapDeg / 2f
@@ -144,24 +145,24 @@ class StatusArcView(context: Context) : View(context) {
             val a = Math.toRadians(angs[k].toDouble())
             fill.color = if (mobileOn && k < signalLevel) orange else offColor
             canvas.drawCircle(cx + (r * Math.cos(a)).toFloat(), cy + (r * Math.sin(a)).toFloat(),
-                u * 0.034f, fill)
+                u * 0.026f, fill)
         }
     }
 
     private fun drawWifi(canvas: Canvas, cx: Float, iy: Float, u: Float) {
         val apexY = iy + u * 0.11f
         line.color = orange
-        line.strokeWidth = u * 0.045f
+        line.strokeWidth = 1.3f * resources.displayMetrics.density
         for (i in 1..3) {
             val rr = u * 0.085f * i
             canvas.drawArc(RectF(cx - rr, apexY - rr, cx + rr, apexY + rr), 225f, 90f, false, line)
         }
         fill.color = orange
-        canvas.drawCircle(cx, apexY, u * 0.03f, fill)
+        canvas.drawCircle(cx, apexY, u * 0.024f, fill)
     }
 
     private fun drawBars(canvas: Canvas, cx: Float, iy: Float, u: Float) {
-        val bw = u * 0.055f
+        val bw = 1.6f * resources.displayMetrics.density
         val base = iy + u * 0.12f
         for (i in 0 until 4) {
             val h = u * (0.07f + i * 0.055f)
@@ -174,18 +175,18 @@ class StatusArcView(context: Context) : View(context) {
     private fun drawNoNet(canvas: Canvas, cx: Float, iy: Float, u: Float) {
         val gr = u * 0.13f
         line.color = subColor
-        line.strokeWidth = u * 0.03f
+        line.strokeWidth = 1.2f * resources.displayMetrics.density
         canvas.drawCircle(cx, iy, gr, line)
-        line.strokeWidth = u * 0.025f
+        line.strokeWidth = 1.0f * resources.displayMetrics.density
         canvas.drawOval(RectF(cx - gr * 0.45f, iy - gr, cx + gr * 0.45f, iy + gr), line)
         canvas.drawLine(cx - gr, iy, cx + gr, iy, line)
         // 斜線（背景色で縁取り）
         val d = gr * 1.15f
         line.color = bgColor
-        line.strokeWidth = u * 0.07f
+        line.strokeWidth = 3.2f * resources.displayMetrics.density
         canvas.drawLine(cx - d, iy - d, cx + d, iy + d, line)
         line.color = subColor
-        line.strokeWidth = u * 0.03f
+        line.strokeWidth = 1.2f * resources.displayMetrics.density
         canvas.drawLine(cx - d, iy - d, cx + d, iy + d, line)
     }
 
