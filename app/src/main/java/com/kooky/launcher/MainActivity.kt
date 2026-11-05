@@ -85,7 +85,6 @@ class MainActivity : Activity() {
     private lateinit var ticker: TickerView
     private lateinit var mediaBar: MediaBar
     private lateinit var storageStat: StatItemView
-    private lateinit var robot: ImageView
     private lateinit var rootFrame: FrameLayout
     private lateinit var contentLayout: LinearLayout
     private lateinit var topArea: LinearLayout
@@ -101,8 +100,6 @@ class MainActivity : Activity() {
     private val gridRows = 3
     private val cellHeightDp = 108
     private val cornerR = 6
-    private val robotSizeDp = 76
-    private val idleTimeoutMs = 120_000L
     private val fastChargeMa = 1500
 
     // テーマ：0=ダーク / 1=ライト / 2=オート(6:00〜21:00ライト)
@@ -140,11 +137,6 @@ class MainActivity : Activity() {
         ))
     )
 
-    private val robotLines = listOf(
-        "どれにする？", "だれを呼ぶ？", "何をひらく？",
-        "ぼくにまかせて！", "どこにいく？"
-    )
-
     private val fallbackLat = 36.389
     private val fallbackLon = 139.063
     private val LOC_REQ = 1001
@@ -153,7 +145,6 @@ class MainActivity : Activity() {
     private var showLabels = true
     private var useDesignIcon = true
     private var showInitial = true
-    private var showRobot = true
 
     private val readingMap = mapOf(
         "あはも" to "ahamo",
@@ -163,38 +154,7 @@ class MainActivity : Activity() {
 
     private var netCallback: ConnectivityManager.NetworkCallback? = null
 
-    private var robotX = 0f
-    private var robotY = 0f
-    private var robotVX = 2.2f
-    private var robotVY = 1.6f
-    private var robotTick = 0
-    private var robotBusy = false
-    private var facingLeft = false
-    private var isShowingQuestion = false
-
-    private var flying = false
-    private var flyVX = 0f
-    private var flyVY = 0f
-
-    private var sleeping = false
-    private var awakeUntil = 0L
-
     private var charging = false
-    private var chargingParked = false
-
-    private var standby = false
-    private var lastInteractMs = 0L
-
-    private var talking = false
-    private var talkAnchorX = 0f
-    private var talkAnchorY = 0f
-    private var switchingBubble = false
-
-    private var torchOn = false
-    private var cameraManager: CameraManager? = null
-    private var torchCameraId: String? = null
-
-    private var aiPopup: PopupWindow? = null
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -205,12 +165,7 @@ class MainActivity : Activity() {
             val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
                              status == BatteryManager.BATTERY_STATUS_FULL
             updateChargeMode(isCharging)
-            if (isCharging != charging) {
-                charging = isCharging
-                if (!standby && !talking) {
-                    if (charging) startCharging() else stopCharging()
-                }
-            }
+            charging = isCharging
         }
     }
 
@@ -275,20 +230,12 @@ class MainActivity : Activity() {
         }
     }
 
-    private val robotAnim = object : Runnable {
-        override fun run() {
-            animateRobot()
-            timeHandler.postDelayed(this, 33)
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = getSharedPreferences("usage", Context.MODE_PRIVATE)
         showLabels = prefs.getBoolean("show_labels", true)
         useDesignIcon = prefs.getBoolean("use_design_icon", true)
         showInitial = prefs.getBoolean("show_initial", true)
-        showRobot = prefs.getBoolean("show_robot", true)
         themeMode = prefs.getInt("theme_mode", 0)
         isLight = computeLight()
         loadCategories()
@@ -472,61 +419,18 @@ class MainActivity : Activity() {
         }
         arrangeLayout()
 
-        val robotGesture = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                lastInteractMs = System.currentTimeMillis()
-                if (standby) { wakeFromStandby(); return true }
-                onRobotTap(); return true
-            }
-            override fun onDoubleTap(e: MotionEvent): Boolean {
-                if (standby) { wakeFromStandby(); return true }
-                lastInteractMs = System.currentTimeMillis()
-                if (sleeping && isSleepTime()) { wakeUp(); return true }
-                toggleTorch(); return true
-            }
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
-                if (standby) { wakeFromStandby(); return true }
-                lastInteractMs = System.currentTimeMillis()
-                onRobotFling(vx, vy); return true
-            }
-        })
-
-        robot = ImageView(this).apply {
-            setImageResource(R.drawable.robot_normal)
-            setOnTouchListener { _, ev -> robotGesture.onTouchEvent(ev); true }
-            visibility = if (showRobot) View.VISIBLE else View.GONE
-        }
-
         rootFrame = FrameLayout(this).apply {
             addView(contentLayout, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            addView(robot, FrameLayout.LayoutParams(dp(robotSizeDp), dp(robotSizeDp)))
         }
 
         setContentView(rootFrame)
         applyTheme()
 
-        cameraManager = getSystemService(Context.CAMERA_SERVICE) as? CameraManager
-        try {
-            torchCameraId = cameraManager?.cameraIdList?.firstOrNull { id ->
-                cameraManager?.getCameraCharacteristics(id)
-                    ?.get(android.hardware.camera2.CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
-            }
-        } catch (e: Exception) {}
-
         applyFilter()
         maybeAskNotificationAccess()
         maybeAskLocation()
 
-        robot.post {
-            robotX = (rootFrame.width - dp(robotSizeDp)) / 2f
-            robotY = rootFrame.height * 0.62f
-            robot.x = robotX
-            robot.y = robotY
-            lastInteractMs = System.currentTimeMillis()
-            enterSleepIfNeeded()
-            updateRobotFace()
-        }
     }
 
     private fun loadCategories() {
@@ -632,22 +536,8 @@ class MainActivity : Activity() {
     // 画面の向きが変わったとき（作り直さずに並べ替える）
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
-        if (talking) { switchingBubble = true; aiPopup?.dismiss(); switchingBubble = false; talking = false }
         arrangeLayout()
         hideSystemBars()
-        rootFrame.post {
-            if (!showRobot) return@post
-            robot.animate().cancel()
-            val size = dp(robotSizeDp)
-            robotX = robotX.coerceIn(0f, (rootFrame.width - size).toFloat().coerceAtLeast(0f))
-            robotY = robotY.coerceIn(rootFrame.height * 0.08f, (rootFrame.height - size).toFloat().coerceAtLeast(0f))
-            robot.x = robotX; robot.y = robotY
-            when {
-                standby -> goStandby()
-                charging -> startCharging()
-                else -> { robotBusy = false; flying = false; updateRobotFace() }
-            }
-        }
     }
 
     private fun computeLight(): Boolean {
@@ -691,643 +581,6 @@ class MainActivity : Activity() {
         val style = if (isLight) android.R.style.Theme_Material_Light_Dialog_Alert
                     else android.R.style.Theme_Material_Dialog_Alert
         return AlertDialog.Builder(this, style)
-    }
-
-    // ROBOTの表示/非表示を切り替え
-    private fun applyRobotVisibility() {
-        if (showRobot) {
-            robot.visibility = View.VISIBLE
-            standby = false
-            flying = false
-            robotBusy = false
-            lastInteractMs = System.currentTimeMillis()
-            robot.animate().cancel()
-            robot.rotation = 0f; robot.rotationY = 0f
-            robot.scaleX = 1f; robot.scaleY = 1f
-            robotX = (rootFrame.width - dp(robotSizeDp)) / 2f
-            robotY = rootFrame.height * 0.62f
-            robot.x = robotX; robot.y = robotY
-            if (charging) startCharging()
-            else { enterSleepIfNeeded(); updateRobotFace() }
-        } else {
-            if (talking) {
-                switchingBubble = true; aiPopup?.dismiss(); switchingBubble = false
-                talking = false
-            }
-            robot.animate().cancel()
-            robot.visibility = View.GONE
-        }
-    }
-
-    private fun goStandby() {
-        standby = true
-        flying = false
-        sleeping = false
-        robotBusy = false
-        chargingParked = false
-        isShowingQuestion = false
-        aiPopup?.dismiss()
-        val w = rootFrame.width
-        val size = dp(robotSizeDp)
-        robotX = (w - size - dp(8)).toFloat()
-        robotY = rootFrame.height * 0.12f
-        robot.animate().cancel()
-        robot.animate().x(robotX).y(robotY).setDuration(500).withEndAction {
-            robot.rotation = 0f; robot.rotationY = 0f
-            robot.scaleX = 1f; robot.scaleY = 1f
-            robot.setImageResource(R.drawable.robot_standby)
-        }.start()
-    }
-
-    private fun wakeFromStandby() {
-        standby = false
-        lastInteractMs = System.currentTimeMillis()
-        robotBusy = false
-        flying = false
-        robot.animate().cancel()
-        robot.rotation = 0f; robot.rotationY = 0f
-        robot.scaleX = 1f; robot.scaleY = 1f
-        if (charging) startCharging()
-        else { enterSleepIfNeeded(); updateRobotFace() }
-    }
-
-    private fun isSleepTime(): Boolean {
-        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        return hour >= 21 || hour < 6
-    }
-
-    private fun enterSleepIfNeeded() {
-        if (charging || standby) return
-        if (isSleepTime()) {
-            sleeping = true
-            awakeUntil = 0L
-            robot.rotation = 0f
-            robot.rotationY = 0f
-            robot.scaleX = 1f
-            robot.scaleY = 1f
-            robot.setImageResource(R.drawable.robot_sleep)
-        } else {
-            sleeping = false
-        }
-    }
-
-    private fun wakeUp() {
-        sleeping = false
-        awakeUntil = System.currentTimeMillis() + 20_000L
-        robot.setImageResource(R.drawable.robot_happy)
-        applyFacing()
-        timeHandler.postDelayed({
-            if (isSleepTime() && !charging && !standby) enterSleepIfNeeded()
-            updateRobotFace()
-        }, 20_000L)
-    }
-
-    private fun startCharging() {
-        if (!showRobot || standby || talking) return
-        sleeping = false
-        flying = false
-        robotBusy = true
-        chargingParked = false
-        isShowingQuestion = false
-        robot.setImageResource(R.drawable.robot_dash)
-        val w = rootFrame.width
-        val size = dp(robotSizeDp)
-        val targetX = (w - size - dp(8)).toFloat()
-        val targetY = rootFrame.height * 0.12f
-        facingLeft = false
-        applyFacing()
-        robot.rotation = 0f; robot.rotationY = 0f
-        robot.animate().x(targetX).y(targetY).setDuration(700).withEndAction {
-            robotX = targetX
-            robotY = targetY
-            chargingParked = true
-            robotBusy = false
-            robot.setImageResource(R.drawable.robot_charging)
-            robot.scaleX = 1f; robot.scaleY = 1f; robot.rotation = 0f; robot.rotationY = 0f
-        }.start()
-    }
-
-    private fun stopCharging() {
-        chargingParked = false
-        robotBusy = false
-        if (standby || talking) return
-        if (isSleepTime()) { enterSleepIfNeeded() }
-        updateRobotFace()
-        robotVX = -1.8f; robotVY = 1.4f
-    }
-
-    private fun animateRobot() {
-        if (!showRobot) return
-        if (talking) return
-
-        if (!standby && !charging && !sleeping &&
-            System.currentTimeMillis() - lastInteractMs > idleTimeoutMs) {
-            goStandby()
-        }
-
-        if (standby) { robotTick++; return }
-
-        val w = rootFrame.width
-        val h = rootFrame.height
-        if (w == 0 || h == 0) return
-        val size = dp(robotSizeDp)
-
-        if (charging) {
-            if (chargingParked) {
-                val fy = Math.sin(robotTick / 12.0).toFloat() * dp(3)
-                robot.y = robotY + fy
-            }
-            robotTick++
-            return
-        }
-
-        if (isSleepTime() && !sleeping && awakeUntil != 0L && System.currentTimeMillis() > awakeUntil) {
-            enterSleepIfNeeded(); updateRobotFace()
-        }
-        if (isSleepTime() && !sleeping && awakeUntil == 0L) {
-            enterSleepIfNeeded(); updateRobotFace()
-        }
-        if (!isSleepTime() && sleeping) {
-            sleeping = false; updateRobotFace()
-        }
-        if (sleeping) { robotTick++; return }
-
-        if (flying) {
-            robotX += flyVX
-            robotY += flyVY
-            val minX = 0f
-            val maxX = (w - size).toFloat()
-            val minY = h * 0.08f
-            val maxY = (h - size).toFloat()
-            if (robotX < minX) { robotX = minX; flyVX = -flyVX * 0.7f }
-            if (robotX > maxX) { robotX = maxX; flyVX = -flyVX * 0.7f }
-            if (robotY < minY) { robotY = minY; flyVY = -flyVY * 0.7f }
-            if (robotY > maxY) { robotY = maxY; flyVY = -flyVY * 0.7f }
-            flyVX *= 0.96f
-            flyVY *= 0.96f
-            robot.x = robotX
-            robot.y = robotY
-            robot.rotation = (robotTick * 8f) % 360
-            if (kotlin.math.abs(flyVX) < 1.2f && kotlin.math.abs(flyVY) < 1.2f) {
-                flying = false
-                robot.rotation = 0f
-                robotVX = if (flyVX < 0) -1.6f else 1.6f
-                robotVY = if (flyVY < 0) -1.2f else 1.2f
-                updateRobotFace()
-            }
-            robotTick++
-            return
-        }
-
-        if (!robotBusy) {
-            if (robotTick % 40 == 0) {
-                robotVX += (Random.nextFloat() - 0.5f) * 0.6f
-                robotVY += (Random.nextFloat() - 0.5f) * 0.5f
-                robotVX = robotVX.coerceIn(-3.2f, 3.2f)
-                robotVY = robotVY.coerceIn(-2.6f, 2.6f)
-                if (kotlin.math.abs(robotVX) < 0.8f) robotVX = if (robotVX < 0) -1.2f else 1.2f
-            }
-            robotX += robotVX
-            robotY += robotVY
-            val minX = 0f
-            val maxX = (w - size).toFloat()
-            val minY = h * 0.30f
-            val maxY = h * 0.72f
-            if (robotX < minX) { robotX = minX; robotVX = kotlin.math.abs(robotVX) }
-            if (robotX > maxX) { robotX = maxX; robotVX = -kotlin.math.abs(robotVX) }
-            if (robotY < minY) { robotY = minY; robotVY = kotlin.math.abs(robotVY) }
-            if (robotY > maxY) { robotY = maxY; robotVY = -kotlin.math.abs(robotVY) }
-
-            facingLeft = robotVX < 0
-
-            val fy = Math.sin(robotTick / 12.0).toFloat() * dp(3)
-            val depth = Math.sin(robotTick / 55.0).toFloat()
-            val scale = 0.9f + (depth + 1f) / 2f * 0.25f
-            val tilt = Math.sin(robotTick / 38.0).toFloat() * 6f
-            val ry = Math.sin(robotTick / 60.0).toFloat() * 12f
-
-            robot.x = robotX
-            robot.y = robotY + fy
-            robot.rotation = tilt
-            robot.rotationY = ry
-            robot.scaleY = scale
-            if (isShowingQuestion) robot.scaleX = scale
-            else robot.scaleX = if (facingLeft) -scale else scale
-        }
-        robotTick++
-
-        if (robotTick % 90 == 0 && !robotBusy) {
-            val r = Random.nextFloat()
-            when {
-                r < 0.15f -> startDash()
-                r < 0.28f -> restPause()
-                else -> randomFace()
-            }
-        }
-    }
-
-    private fun applyFacing() {
-        if (isShowingQuestion) {
-            robot.scaleX = kotlin.math.abs(robot.scaleX).let { if (it < 0.1f) 1f else it }
-            return
-        }
-        val s = kotlin.math.abs(robot.scaleX).let { if (it < 0.1f) 1f else it }
-        robot.scaleX = if (facingLeft) -s else s
-    }
-
-    private fun updateRobotFace() {
-        if (standby) { robot.setImageResource(R.drawable.robot_standby); return }
-        if (talking) return
-        if (flying) return
-        isShowingQuestion = false
-        if (charging && chargingParked) { robot.setImageResource(R.drawable.robot_charging); return }
-        if (sleeping) { robot.setImageResource(R.drawable.robot_sleep); return }
-        robot.setImageResource(R.drawable.robot_normal)
-        applyFacing()
-    }
-
-    private fun randomFace() {
-        if (sleeping || charging || flying || standby || talking) return
-        val faces = intArrayOf(
-            R.drawable.robot_normal, R.drawable.robot_wink,
-            R.drawable.robot_question, R.drawable.robot_hello,
-            R.drawable.robot_transform
-        )
-        val pick = faces[Random.nextInt(faces.size)]
-        isShowingQuestion = (pick == R.drawable.robot_question)
-        robot.setImageResource(pick)
-        applyFacing()
-        timeHandler.postDelayed({ updateRobotFace() }, 1200)
-    }
-
-    private fun restPause() {
-        if (robotBusy || sleeping || charging || flying || standby || talking) return
-        robotBusy = true
-        isShowingQuestion = true
-        robot.setImageResource(R.drawable.robot_question)
-        applyFacing()
-        timeHandler.postDelayed({
-            updateRobotFace()
-            robotBusy = false
-        }, 1400)
-    }
-
-    private fun startDash() {
-        if (robotBusy || sleeping || flying || charging || standby || talking) return
-        robotBusy = true
-        isShowingQuestion = false
-        val w = rootFrame.width
-        val size = dp(robotSizeDp)
-        robot.setImageResource(R.drawable.robot_dash)
-        val fromLeft = robot.x < w / 2f
-        facingLeft = !fromLeft
-        applyFacing()
-        val endX = if (fromLeft) (w - size).toFloat() else 0f
-        robot.animate().x(endX).setDuration(850).withEndAction {
-            robotX = robot.x
-            robotVX = if (fromLeft) -kotlin.math.abs(robotVX) else kotlin.math.abs(robotVX)
-            updateRobotFace()
-            robotBusy = false
-        }.start()
-    }
-
-    private fun onRobotFling(vx: Float, vy: Float) {
-        if (sleeping && isSleepTime()) { wakeUp(); return }
-        if (charging) return
-        robotBusy = false
-        isShowingQuestion = false
-        flying = true
-        robotX = robot.x
-        robotY = robot.y
-        flyVX = (vx / 55f).coerceIn(-40f, 40f)
-        flyVY = (vy / 55f).coerceIn(-40f, 40f)
-        if (kotlin.math.abs(flyVX) < 6f && kotlin.math.abs(flyVY) < 6f) {
-            flyVX = if (flyVX < 0) -12f else 12f
-        }
-        robot.rotation = 0f
-        robot.rotationY = 0f
-        robot.scaleX = 1f
-        robot.scaleY = 1f
-        robot.setImageResource(R.drawable.robot_angry)
-    }
-
-    private fun onRobotTap() {
-        if (sleeping && isSleepTime()) { wakeUp(); return }
-        if (flying) return
-        talking = true
-        robotBusy = false
-        flying = false
-        robot.animate().cancel()
-        robot.rotation = 0f; robot.rotationY = 0f
-        robot.scaleX = 1f; robot.scaleY = 1f
-        robot.setImageResource(R.drawable.robot_happy)
-        val size = dp(robotSizeDp)
-        talkAnchorX = dp(16).toFloat()
-        talkAnchorY = (rootFrame.height - size - dp(120)).toFloat()
-        robotX = talkAnchorX
-        robotY = talkAnchorY
-        robot.animate().x(talkAnchorX).y(talkAnchorY).setDuration(350).withEndAction {
-            robot.x = talkAnchorX
-            robot.y = talkAnchorY
-            showCategoryMenu()
-        }.start()
-    }
-
-    private fun stopTalking() {
-        if (!talking) return
-        talking = false
-        lastInteractMs = System.currentTimeMillis()
-        robotVX = if (Random.nextBoolean()) 1.8f else -1.8f
-        robotVY = if (Random.nextBoolean()) 1.4f else -1.4f
-        if (charging) startCharging()
-        else { enterSleepIfNeeded(); updateRobotFace() }
-    }
-
-    private fun showCategoryMenu() {
-        val card = bubbleCard()
-        card.addView(bubbleTitle(robotLines[Random.nextInt(robotLines.size)]))
-        for (cat in categories) {
-            card.addView(bubbleDivider())
-            val row = bubbleRow(cat.name, "›", orange, false) {
-                showAppMenuInCategory(cat)
-            }
-            row.setOnLongClickListener { editCategory(cat); true }
-            card.addView(row)
-        }
-        card.addView(bubbleDivider())
-        card.addView(bubblePlusRight { addCategory() })
-        showBubble(card)
-    }
-
-    private fun addCategory() {
-        val input = EditText(this).apply {
-            hint = "カテゴリ名"; setHintTextColor(grayText); setTextColor(textColor); setSingleLine(true)
-        }
-        dialogBuilder()
-            .setTitle("カテゴリを追加")
-            .setView(input)
-            .setPositiveButton("追加") { _, _ ->
-                val name = input.text.toString().trim()
-                if (name.isNotEmpty()) {
-                    categories.add(Category(name, mutableListOf()))
-                    saveCategories()
-                    showCategoryMenu()
-                }
-            }
-            .setNegativeButton("キャンセル", null)
-            .show()
-    }
-
-    private fun editCategory(cat: Category) {
-        val input = EditText(this).apply {
-            setText(cat.name); setTextColor(textColor); setSingleLine(true)
-        }
-        dialogBuilder()
-            .setTitle("カテゴリを編集")
-            .setView(input)
-            .setPositiveButton("保存") { _, _ ->
-                val name = input.text.toString().trim()
-                if (name.isNotEmpty()) { cat.name = name; saveCategories() }
-                showCategoryMenu()
-            }
-            .setNeutralButton("削除") { _, _ ->
-                dialogBuilder()
-                    .setTitle("削除")
-                    .setMessage("「${cat.name}」を削除しますか？")
-                    .setPositiveButton("削除") { _, _ ->
-                        categories.remove(cat); saveCategories(); showCategoryMenu()
-                    }
-                    .setNegativeButton("キャンセル") { _, _ -> showCategoryMenu() }
-                    .show()
-            }
-            .setNegativeButton("キャンセル", null)
-            .show()
-    }
-
-    private fun showAppMenuInCategory(cat: Category) {
-        val card = bubbleCard()
-        card.addView(bubbleTitle(cat.name))
-        card.addView(bubbleDivider())
-        card.addView(bubbleBackAddBar({ showCategoryMenu() }, { showAddAppPicker(cat) }))
-        for (app in cat.apps) {
-            card.addView(bubbleDivider())
-            val row = bubbleRow(app.name, "▶", orange, false) {
-                openLinkApp(app)
-            }
-            row.setOnLongClickListener { confirmRemoveApp(cat, app); true }
-            card.addView(row)
-        }
-        showBubble(card)
-    }
-
-    private fun confirmRemoveApp(cat: Category, app: LinkApp) {
-        dialogBuilder()
-            .setTitle("削除")
-            .setMessage("「${app.name}」を${cat.name}から削除しますか？")
-            .setPositiveButton("削除") { _, _ ->
-                cat.apps.remove(app)
-                saveCategories()
-                showAppMenuInCategory(cat)
-            }
-            .setNegativeButton("キャンセル", null)
-            .show()
-    }
-
-    private fun showAddAppPicker(cat: Category) {
-        switchingBubble = true
-        aiPopup?.dismiss()
-        switchingBubble = false
-        val card = menuCard()
-        card.addView(menuTitle("${cat.name} に追加"))
-        card.addView(menuDivider())
-
-        val search = EditText(this).apply {
-            hint = "アプリを検索"
-            setHintTextColor(grayText)
-            setTextColor(textColor)
-            setSingleLine(true)
-            background = null
-            val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            lp.setMargins(dp(14), dp(4), dp(14), dp(4))
-            layoutParams = lp
-            setPadding(dp(4), dp(6), dp(4), dp(6))
-        }
-        card.addView(search)
-        card.addView(menuDivider())
-
-        val listContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val scroll = ScrollView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(360))
-            addView(listContainer)
-        }
-        card.addView(scroll)
-
-        lateinit var dialog: AlertDialog
-
-        fun renderList(query: String) {
-            listContainer.removeAllViews()
-            val q = query.trim().lowercase()
-            val list = apps.filter { q.isEmpty() || it.label.lowercase().contains(q) }
-            for (a in list) {
-                val row = TextView(this).apply {
-                    text = a.label
-                    setTextColor(textColor)
-                    textSize = 14f
-                    setPadding(dp(16), dp(12), dp(16), dp(12))
-                    isClickable = true
-                    setOnClickListener {
-                        if (cat.apps.none { it.pkg == a.packageName }) {
-                            cat.apps.add(LinkApp(a.label, a.packageName, ""))
-                            saveCategories()
-                            Toast.makeText(this@MainActivity, "${a.label}を追加しました", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(this@MainActivity, "すでに追加済みです", Toast.LENGTH_SHORT).show()
-                        }
-                        dialog.dismiss()
-                        showAppMenuInCategory(cat)
-                    }
-                }
-                listContainer.addView(row)
-                listContainer.addView(View(this).apply {
-                    setBackgroundColor(divider)
-                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
-                })
-            }
-        }
-        renderList("")
-        search.addTextChangedListener(object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) { renderList(s?.toString() ?: "") }
-            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-        })
-
-        dialog = dialogBuilder().setView(card).create()
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
-        dialog.show()
-    }
-
-    private fun bubbleCard(): LinearLayout {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(14).toFloat()
-                setColor(cardBg)
-                setStroke(dp(1), orange)
-            }
-        }
-    }
-
-    private fun bubbleTitle(text: String): TextView {
-        return TextView(this).apply {
-            this.text = text
-            setTextColor(textColor)
-            textSize = 13f
-            setTypeface(typeface, Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setPadding(dp(16), dp(12), dp(16), dp(8))
-        }
-    }
-
-    private fun bubbleDivider(): View {
-        return View(this).apply {
-            setBackgroundColor(divider)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
-        }
-    }
-
-    private fun bubbleRow(label: String, arrow: String, arrowColor: Int, leftAccent: Boolean, onClick: () -> Unit): LinearLayout {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(11), dp(16), dp(11))
-            isClickable = true
-            setOnClickListener { onClick() }
-        }
-        val left = TextView(this).apply {
-            text = label
-            setTextColor(if (leftAccent) orange else textColor)
-            textSize = if (leftAccent) 16f else 14f
-            setTypeface(typeface, if (leftAccent) Typeface.BOLD else Typeface.NORMAL)
-        }
-        row.addView(left, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        if (arrow.isNotEmpty()) {
-            val right = TextView(this).apply {
-                text = arrow; setTextColor(arrowColor); textSize = 14f
-            }
-            row.addView(right, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        }
-        return row
-    }
-
-    private fun bubbleBackAddBar(onBack: () -> Unit, onAdd: () -> Unit): LinearLayout {
-        val bar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(10), dp(16), dp(10))
-        }
-        val back = TextView(this).apply {
-            text = "◁"; setTextColor(orange); textSize = 17f
-            setTypeface(typeface, Typeface.BOLD)
-            isClickable = true; setOnClickListener { onBack() }
-        }
-        val add = TextView(this).apply {
-            text = "＋"; setTextColor(orange); textSize = 18f
-            setTypeface(typeface, Typeface.BOLD)
-            gravity = Gravity.END
-            isClickable = true; setOnClickListener { onAdd() }
-        }
-        bar.addView(back, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        bar.addView(add, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        return bar
-    }
-
-    private fun bubblePlusRight(onAdd: () -> Unit): LinearLayout {
-        val bar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(10), dp(16), dp(10))
-        }
-        val spacer = View(this)
-        val add = TextView(this).apply {
-            text = "＋"; setTextColor(orange); textSize = 18f
-            setTypeface(typeface, Typeface.BOLD)
-            gravity = Gravity.END
-            isClickable = true; setOnClickListener { onAdd() }
-        }
-        bar.addView(spacer, LinearLayout.LayoutParams(0, dp(1), 1f))
-        bar.addView(add, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        return bar
-    }
-
-    // 窓をロボの右上に固定（ロボは触らない・切り替えdismissではstopTalkingしない）
-    private fun showBubble(card: LinearLayout) {
-        switchingBubble = true
-        aiPopup?.dismiss()
-        switchingBubble = false
-
-        val popupW = dp(210)
-        val popup = PopupWindow(card, popupW, ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
-            isOutsideTouchable = true
-            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
-            setOnDismissListener { if (!switchingBubble) stopTalking() }
-        }
-        aiPopup = popup
-
-        val loc = IntArray(2)
-        rootFrame.getLocationInWindow(loc)
-        val rootTop = loc[1]
-        val size = dp(robotSizeDp)
-
-        var winX = (talkAnchorX + size - dp(8)).toInt()
-        winX = winX.coerceIn(dp(8), rootFrame.width - popupW - dp(8))
-        var winY = (talkAnchorY - dp(210)).toInt()
-        winY = winY.coerceAtLeast(dp(8))
-
-        popup.showAtLocation(rootFrame, Gravity.NO_GRAVITY, winX, rootTop + winY)
     }
 
     // 掲示板の通知をタップ → その通知を開く（だめならアプリを開く）
@@ -1607,7 +860,6 @@ class MainActivity : Activity() {
     }
 
     private fun openLinkApp(app: LinkApp) {
-        aiPopup?.dismiss()
         if (isShortcut(app.pkg)) { startShortcutKey(app.pkg); return }
         try {
             val intent = packageManager.getLaunchIntentForPackage(app.pkg)
@@ -1624,25 +876,6 @@ class MainActivity : Activity() {
             } catch (e: Exception) {}
         }
         Toast.makeText(this, "${app.name}を開けませんでした", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun toggleTorch() {
-        val id = torchCameraId
-        if (id == null) {
-            Toast.makeText(this, "ライトが使えません", Toast.LENGTH_SHORT).show()
-            return
-        }
-        try {
-            torchOn = !torchOn
-            cameraManager?.setTorchMode(id, torchOn)
-            if (!charging && !flying && !standby && !talking) {
-                robot.setImageResource(if (torchOn) R.drawable.robot_happy else R.drawable.robot_normal)
-                applyFacing()
-                if (!torchOn) timeHandler.postDelayed({ updateRobotFace() }, 600)
-            }
-        } catch (e: Exception) {
-            Toast.makeText(this, "ライトの切替に失敗しました", Toast.LENGTH_SHORT).show()
-        }
     }
 
     private fun hideSystemBars() {
@@ -1694,21 +927,10 @@ class MainActivity : Activity() {
         timeHandler.post(weatherTick)
         timeHandler.removeCallbacks(chargeTick)
         timeHandler.post(chargeTick)
-        timeHandler.removeCallbacks(robotAnim)
-        timeHandler.post(robotAnim)
         timeHandler.removeCallbacks(statsTick)
         timeHandler.post(statsTick)
         mediaBar.start()
         updateTicker()
-        lastInteractMs = System.currentTimeMillis()
-        if (talking) { switchingBubble = true; aiPopup?.dismiss(); switchingBubble = false; talking = false }
-        if (!showRobot) {
-            robot.visibility = View.GONE
-        } else if (standby) {
-            robot.post { goStandby() }
-        } else {
-            if (!charging) { enterSleepIfNeeded(); updateRobotFace() }
-        }
     }
 
     override fun onPause() {
@@ -1718,18 +940,10 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(tick)
         timeHandler.removeCallbacks(weatherTick)
         timeHandler.removeCallbacks(chargeTick)
-        timeHandler.removeCallbacks(robotAnim)
         timeHandler.removeCallbacks(statsTick)
         ticker.stop()
         mediaBar.stop()
         statusArc.stopBlink()
-        switchingBubble = true
-        aiPopup?.dismiss()
-        switchingBubble = false
-        if (torchOn) {
-            try { torchCameraId?.let { cameraManager?.setTorchMode(it, false) } } catch (e: Exception) {}
-            torchOn = false
-        }
     }
 
     private fun registerNetworkCallback() {
@@ -2246,13 +1460,6 @@ class MainActivity : Activity() {
         col.addView(View(this), LinearLayout.LayoutParams(1, dp(10)))
         note("オートは、朝6時から夜9時までライト、それ以外はダークになります。")
 
-        // ── ロボ ──
-        section("ロボ")
-        toggle("表示する", showRobot) {
-            showRobot = it; prefs.edit().putBoolean("show_robot", it).apply()
-            applyRobotVisibility(); renderSettings()
-        }
-
         // ── 通信量 ──
         section("通信量")
         valueRow("締め日", closeDayLabel()) { showDataSettings() }
@@ -2719,7 +1926,6 @@ class MainActivity : Activity() {
     }
 
     override fun onBackPressed() {
-        if (aiPopup?.isShowing == true) { aiPopup?.dismiss(); return }
         if (!searchBar.text.isNullOrEmpty()) resetSearch() else super.onBackPressed()
     }
 
