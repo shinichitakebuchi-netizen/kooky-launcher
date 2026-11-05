@@ -2,12 +2,9 @@ package com.kooky.launcher
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.RadialGradient
 import android.graphics.RectF
-import android.graphics.Shader
 import android.view.View
 
 class WeatherView(context: Context) : View(context) {
@@ -15,20 +12,20 @@ class WeatherView(context: Context) : View(context) {
     // 0=はれ 1=くもり 2=あめ 3=かみなり 4=ゆき 5=はれのよる
     var weatherType: Int = 0
         set(value) { field = value; invalidate() }
-    // ライトモード：白い雲・雪・星をグレーに、光条をオレンジに
+    // ライトモード：雲・雪・星を利休鼠／甕覗に、光条を紅緋に
     var lightMode: Boolean = false
         set(value) { field = value; invalidate() }
 
-    private val orange = Color.parseColor("#FF8C00")
-    private val blue = Color.parseColor("#4AA3FF")
-    private val lightMain = Color.parseColor("#A1A1A6")
-    private val lightSoft = Color.parseColor("#D1D1D6")
+    private val orange = Wa.BENIHI        // 太陽・月：紅緋
+    private val bolt = Wa.UKON            // 稲妻：鬱金色
+    private val lightMain = Wa.RIKYU      // ライトの雲：利休鼠
+    private val lightSoft = Wa.KAMENOZOKI // ライトの奥の雲：甕覗
 
     private var t = 0f
-    private val white = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
-    private val soft = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#CCCCCC") }
+    private val white = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Wa.TORINOKO }
+    private val soft = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Wa.KAMENOZOKI }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE; color = Color.WHITE; strokeCap = Paint.Cap.ROUND
+        style = Paint.Style.STROKE; color = Wa.TORINOKO; strokeCap = Paint.Cap.ROUND
     }
 
     private data class Particle(var x: Float, var y: Float, var phase: Float)
@@ -59,8 +56,8 @@ class WeatherView(context: Context) : View(context) {
         val cx = w / 2f
         val cy = h / 2f
         val u = minOf(w, h)
-        white.color = if (lightMode) lightMain else Color.WHITE
-        soft.color = if (lightMode) lightSoft else Color.parseColor("#CCCCCC")
+        white.color = if (lightMode) lightMain else Wa.TORINOKO   // 雲：鳥の子色
+        soft.color = if (lightMode) lightSoft else Wa.KAMENOZOKI  // 奥の雲：甕覗
         when (weatherType) {
             0 -> drawSun(canvas, cx, cy, u)
             1 -> drawCloud(canvas, cx, cy, u)
@@ -73,13 +70,11 @@ class WeatherView(context: Context) : View(context) {
 
     private fun drawSun(canvas: Canvas, cx: Float, cy: Float, u: Float) {
         val r = u * 0.16f
-        // 太陽本体＝オレンジ（中心を明るく）
-        val body = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = RadialGradient(cx, cy, r, Color.parseColor("#FFB84D"), orange, Shader.TileMode.CLAMP)
-        }
+        // 太陽本体＝紅緋（飾りのグラデーションはなし）
+        val body = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = orange }
         canvas.drawCircle(cx, cy, r, body)
-        // 光条＝白（ライトモードはオレンジ）
-        stroke.color = if (lightMode) orange else Color.WHITE
+        // 光条＝鳥の子色（ライトモードは紅緋）
+        stroke.color = if (lightMode) orange else Wa.TORINOKO
         stroke.strokeWidth = u * 0.03f
         val breathe = (Math.sin(t.toDouble()) * u * 0.02f).toFloat()
         val inner = r + u * 0.06f + breathe
@@ -123,8 +118,8 @@ class WeatherView(context: Context) : View(context) {
                     cloudY + u * 0.15f + Math.random().toFloat() * u * 0.5f, 0f))
             }
         }
-        // 雨粒＝青
-        stroke.color = blue
+        // 雨粒＝甕覗（ライトは藍色）
+        stroke.color = if (lightMode) Wa.AI else Wa.KAMENOZOKI
         stroke.strokeWidth = u * 0.024f
         val bottom = cloudY + u * 0.7f
         for (d in drops) {
@@ -142,8 +137,8 @@ class WeatherView(context: Context) : View(context) {
         canvas.drawPath(cloudPath(cx, cy - u * 0.16f, s), white) // 雲＝白
         val flash = Math.sin(t * 2.0) > -0.3
         if (flash) {
-            // 稲妻＝オレンジ
-            val bolt = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = orange }
+            // 稲妻＝鬱金色
+            val boltPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = bolt }
             val p = Path()
             p.moveTo(cx + u*0.04f, cy + u*0.02f)
             p.lineTo(cx - u*0.06f, cy + u*0.18f)
@@ -152,7 +147,7 @@ class WeatherView(context: Context) : View(context) {
             p.lineTo(cx + u*0.12f, cy + u*0.12f)
             p.lineTo(cx + u*0.03f, cy + u*0.12f)
             p.close()
-            canvas.drawPath(p, bolt)
+            canvas.drawPath(p, boltPaint)
         }
     }
 
@@ -184,7 +179,7 @@ class WeatherView(context: Context) : View(context) {
 
     private fun drawNight(canvas: Canvas, cx: Float, cy: Float, u: Float) {
         val r = u * 0.2f
-        // 三日月＝オレンジ
+        // 三日月＝紅緋
         val moon = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = orange }
         val save = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
         canvas.drawCircle(cx - u*0.03f, cy, r, moon)

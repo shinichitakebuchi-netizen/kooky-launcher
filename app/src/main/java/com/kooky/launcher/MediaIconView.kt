@@ -13,7 +13,7 @@ class MediaIconView(context: Context, private val kind: Kind) : View(context) {
 
     enum class Kind { PREV, REWIND, PLAY_PAUSE, FORWARD, NEXT }
 
-    var color: Int = 0xFFFFFFFF.toInt()
+    var color: Int = Wa.TORINOKO
         set(v) { field = v; invalidate() }
     // PLAY_PAUSE のときだけ使う：true=一時停止マーク／false=再生マーク
     var playing: Boolean = true

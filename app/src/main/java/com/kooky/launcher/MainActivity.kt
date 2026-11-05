@@ -106,15 +106,16 @@ class MainActivity : Activity() {
     private var themeMode = 0
     private var isLight = false
 
-    private val orange = Color.parseColor("#FF8C00")
-    private val bgColor get() = if (isLight) Color.parseColor("#F5F5F7") else Color.BLACK
-    private val textColor get() = if (isLight) Color.parseColor("#1C1C1E") else Color.WHITE
-    private val subText get() = if (isLight) Color.parseColor("#6E6E73") else Color.parseColor("#CCCCCC")
-    private val cardBg get() = if (isLight) Color.WHITE else Color.parseColor("#1C1C22")
-    private val cardBorder get() = if (isLight) Color.parseColor("#D1D1D6") else Color.parseColor("#333333")
-    private val divider get() = if (isLight) Color.parseColor("#E5E5EA") else Color.parseColor("#2A2A30")
-    private val grayText get() = if (isLight) Color.parseColor("#8E8E93") else Color.parseColor("#666666")
-    private val iconFill get() = if (isLight) Color.WHITE else Color.BLACK
+    // 色はすべて Wa（日本の伝統色）から。ダーク＝藍の地、ライト＝鳥の子の地
+    private val orange = Wa.BENIHI                     // 強調（紅緋）
+    private val bgColor get() = Wa.bg(isLight)         // 背景（藍色）
+    private val textColor get() = Wa.ink(isLight)      // 文字・主（鳥の子色）
+    private val subText get() = Wa.sub(isLight)        // 文字・補足（甕覗70%）
+    private val cardBg get() = bgColor                 // カードは塗らない（背景と同じ）
+    private val cardBorder get() = Wa.line(isLight)    // 枠線（利休鼠）
+    private val divider get() = Wa.line(isLight)       // 罫線（利休鼠）
+    private val grayText get() = Wa.sub(isLight)
+    private val iconFill get() = bgColor
 
     private val releasesUrl = "https://github.com/shinichitakebuchi-netizen/kooky-launcher/releases/latest"
 
@@ -335,7 +336,7 @@ class MainActivity : Activity() {
         searchBar = EditText(this).apply {
             setSingleLine(true)
             setTextColor(textColor)
-            setHintTextColor(Color.parseColor("#888888"))
+            setHintTextColor(subText)
             background = null
             val p = dp(10)
             setPadding(p, p, p, p)
@@ -574,8 +575,7 @@ class MainActivity : Activity() {
     }
 
     private fun dialogBuilder(): AlertDialog.Builder {
-        val style = if (isLight) android.R.style.Theme_Material_Light_Dialog_Alert
-                    else android.R.style.Theme_Material_Dialog_Alert
+        val style = if (isLight) R.style.WaDialog_Light else R.style.WaDialog
         return AlertDialog.Builder(this, style)
     }
 
@@ -636,9 +636,10 @@ class MainActivity : Activity() {
             setPadding(dp(18), dp(16), dp(18), dp(10))
         }
         head.addView(TextView(this).apply {
-            text = "Wi-Fi"; setTextColor(textColor); textSize = 15f; setTypeface(typeface, Typeface.BOLD)
+            text = "Wi-Fi"; setTextColor(orange); textSize = 15f
+            typeface = Typeface.create(Typeface.SERIF, Typeface.NORMAL); letterSpacing = 0.27f
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        head.addView(TextView(this).apply { text = "接続中"; setTextColor(orange); textSize = 12f })
+        head.addView(TextView(this).apply { text = "接続中"; setTextColor(Wa.WAKATAKE); textSize = 12f })
         card.addView(head)
 
         fun infoRow(label: String, value: String, sub: String = "") {
@@ -675,11 +676,11 @@ class MainActivity : Activity() {
         fun showButton(label: String) {
             area.removeAllViews()
             area.addView(TextView(this).apply {
-                text = label; setTextColor(orange); textSize = 13f; setTypeface(typeface, Typeface.BOLD)
+                text = label; setTextColor(textColor); textSize = 13f
                 gravity = Gravity.CENTER
                 setPadding(0, dp(9), 0, dp(9))
                 background = GradientDrawable().apply {
-                    cornerRadius = dp(cornerR).toFloat(); setColor(Color.TRANSPARENT); setStroke(dp(1), orange)
+                    cornerRadius = dp(cornerR).toFloat(); setColor(Color.TRANSPARENT); setStroke(dp(1), cardBorder)
                 }
                 isClickable = true
                 setOnClickListener { runSpeedTest(area, { alive }) { showButton("もう一度測る") } }
@@ -1269,9 +1270,10 @@ class MainActivity : Activity() {
     private fun menuTitle(text: String): TextView {
         return TextView(this).apply {
             this.text = text
-            setTextColor(textColor)
+            setTextColor(orange)
             textSize = 15f
-            setTypeface(typeface, Typeface.BOLD)
+            typeface = Typeface.create(Typeface.SERIF, Typeface.NORMAL)
+            letterSpacing = 0.27f
             setPadding(dp(18), dp(16), dp(18), dp(10))
         }
     }
@@ -1279,7 +1281,9 @@ class MainActivity : Activity() {
     private fun menuDivider(): View {
         return View(this).apply {
             setBackgroundColor(divider)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+            // 細い罫線（0.5dp）
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                maxOf(1, (0.5f * resources.displayMetrics.density).toInt()))
         }
     }
 
@@ -1314,12 +1318,12 @@ class MainActivity : Activity() {
         }
     }
 
-    // ===== 設定（墨・生成り・朱の全画面。縁アプリと同じデザイン） =====
-    private val SUMI = Color.parseColor("#1E2024")
-    private val KINARI = Color.parseColor("#ECE7DC")
-    private val USUZUMI = Color.parseColor("#8C8F96")
-    private val SUMI_LINE = Color.parseColor("#3A3D44")
-    private val SHU = Color.parseColor("#E0632F")
+    // ===== 設定（藍・鳥の子・紅緋の全画面。縁アプリと同じ配色・デザイン） =====
+    private val SUMI = Wa.AI              // 背景：藍色
+    private val KINARI = Wa.TORINOKO      // 文字：鳥の子色
+    private val USUZUMI = Wa.KAMENOZOKI70 // 補足：甕覗 70%
+    private val SUMI_LINE = Wa.RIKYU      // 罫線：利休鼠
+    private val SHU = Wa.BENIHI           // 見出し：紅緋
     private var settingsDialog: android.app.Dialog? = null
     private var settingsCol: LinearLayout? = null
 
@@ -1337,6 +1341,10 @@ class MainActivity : Activity() {
         }
         d.setContentView(scroll)
         d.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(SUMI))
+        try {
+            d.window?.statusBarColor = SUMI
+            d.window?.navigationBarColor = SUMI
+        } catch (e: Exception) {}
         d.setOnDismissListener { settingsDialog = null; settingsCol = null; hideSystemBars() }
         settingsDialog = d
         settingsCol = col
@@ -1657,7 +1665,7 @@ class MainActivity : Activity() {
         }
         val underline = View(this).apply {
             setBackgroundColor(orange)
-            val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(2))
+            val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
             lp.setMargins(dp(18), 0, dp(18), 0)
             layoutParams = lp
         }
@@ -1752,17 +1760,12 @@ class MainActivity : Activity() {
         box.addView(head)
 
         // バー（いちばん使っているアプリを100%として表示）
-        val track = FrameLayout(this).apply {
-            background = GradientDrawable().apply {
-                cornerRadius = dp(3).toFloat(); setColor(divider)
-            }
-        }
-        val bar = View(this).apply {
-            background = GradientDrawable().apply { cornerRadius = dp(3).toFloat(); setColor(orange) }
-        }
+        // 2dpの線：残りは利休鼠、回数ぶんは鳥の子色
+        val track = FrameLayout(this).apply { setBackgroundColor(divider) }
+        val bar = View(this).apply { setBackgroundColor(textColor) }
         track.addView(bar, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT))
-        box.addView(track, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(6)).apply {
-            topMargin = dp(6)
+        box.addView(track, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(2)).apply {
+            topMargin = dp(10)
         })
         val foot = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1816,51 +1819,107 @@ class MainActivity : Activity() {
     }
 
     // ===== お気に入り（アプリ枠の色） =====
-    // 0=なし / 1=オレンジ / 2=青 / 3=赤
-    private val favColors = intArrayOf(0, Color.parseColor("#FF8C00"),
-        Color.parseColor("#0A84FF"), Color.parseColor("#FF3B30"))
+    // 保存値：0=なし / 101〜118=伝統色18色（Wa.PICK の順）
+    // 以前の値（1=オレンジ / 2=青 / 3=赤）は 紅緋 / 新橋色 / 韓紅花 として読む
+    private val FAV_BASE = 100
 
     private fun favColorOf(key: String): Int? {
         val f = prefs.getInt("fav_$key", 0)
-        return if (f in 1..3) favColors[f] else null
+        return when (f) {
+            1 -> Wa.BENIHI
+            2 -> Wa.PICK[12]   // 新橋色
+            3 -> Wa.KARAKURENAI
+            in (FAV_BASE + 1)..(FAV_BASE + Wa.PICK.size) -> Wa.PICK[f - FAV_BASE - 1]
+            else -> null
+        }
     }
 
+    // 今の保存値を 0〜18 の番号に（0=なし）
+    private fun favIndexOf(key: String): Int = when (val f = prefs.getInt("fav_$key", 0)) {
+        1 -> 4; 2 -> 13; 3 -> 3
+        in (FAV_BASE + 1)..(FAV_BASE + Wa.PICK.size) -> f - FAV_BASE
+        else -> 0
+    }
+
+    // 6色×3行。丸い色見本の下に小さく色名、選択中は鳥の子色の細い輪
     private fun favSection(app: AppEntry): View {
         val key = app.packageName
-        val row = LinearLayout(this).apply {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(12), dp(18), dp(14))
+        }
+        val head = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(18), dp(12), dp(18), dp(12))
         }
-        row.addView(TextView(this).apply { text = "お気に入り"; setTextColor(textColor); textSize = 14f },
+        head.addView(TextView(this).apply { text = "お気に入り"; setTextColor(textColor); textSize = 14f },
             LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        val chips = ArrayList<View>()
+        val none = TextView(this).apply {
+            text = "なし"; textSize = 12f
+            setPadding(dp(12), dp(4), dp(12), dp(4))
+            isClickable = true
+        }
+        head.addView(none)
+        box.addView(head)
+
+        val thin = maxOf(1, (0.5f * resources.displayMetrics.density).toInt())
+        val swatches = ArrayList<View>()
         fun paint() {
-            val cur = prefs.getInt("fav_$key", 0)
-            for ((i, v) in chips.withIndex()) {
-                v.background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    if (i == 0) { setColor(Color.TRANSPARENT); setStroke(dp(2), grayText) }
-                    else setColor(favColors[i])
-                    if (i == cur) setStroke(dp(3), textColor)
+            val cur = favIndexOf(key)
+            for ((i, v) in swatches.withIndex()) {
+                val sel = cur == i + 1
+                val ring = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL; setColor(Color.TRANSPARENT)
+                    if (sel) setStroke(maxOf(1, (1f * resources.displayMetrics.density).toInt()), Wa.TORINOKO)
                 }
+                val dot = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL; setColor(Wa.PICK[i])
+                    setStroke(thin, Wa.RIKYU)   // 藍色など地に溶ける色も見えるように
+                }
+                v.background = android.graphics.drawable.LayerDrawable(arrayOf(ring, dot)).apply {
+                    setLayerInset(1, dp(3), dp(3), dp(3), dp(3))
+                }
+            }
+            val noneSel = cur == 0
+            none.setTextColor(if (noneSel) bgColor else textColor)
+            none.background = GradientDrawable().apply {
+                cornerRadius = dp(2).toFloat()
+                if (noneSel) setColor(textColor) else { setColor(Color.TRANSPARENT); setStroke(dp(1), cardBorder) }
             }
         }
-        for (i in 0..3) {
-            val v = View(this).apply {
-                isClickable = true
-                contentDescription = arrayOf("なし", "オレンジ", "青", "赤")[i]
-                setOnClickListener {
-                    if (i == 0) prefs.edit().remove("fav_$key").apply()
-                    else prefs.edit().putInt("fav_$key", i).apply()
-                    paint(); appAdapter.notifyDataSetChanged()
+        fun pick(i: Int) {
+            if (i == 0) prefs.edit().remove("fav_$key").apply()
+            else prefs.edit().putInt("fav_$key", FAV_BASE + i).apply()
+            paint(); appAdapter.notifyDataSetChanged()
+        }
+        none.setOnClickListener { pick(0) }
+
+        for (r in 0 until 3) {
+            val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            for (c in 0 until 6) {
+                val i = r * 6 + c
+                val cell = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    setPadding(0, dp(8), 0, 0)
+                    isClickable = true
+                    contentDescription = Wa.PICK_NAMES[i]
+                    setOnClickListener { pick(i + 1) }
                 }
+                val sw = View(this)
+                swatches.add(sw)
+                cell.addView(sw, LinearLayout.LayoutParams(dp(30), dp(30)))
+                cell.addView(TextView(this).apply {
+                    text = Wa.PICK_NAMES[i]; setTextColor(subText); textSize = 9f
+                    maxLines = 1; gravity = Gravity.CENTER
+                    setPadding(0, dp(2), 0, 0)
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                line.addView(cell, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             }
-            chips.add(v)
-            row.addView(v, LinearLayout.LayoutParams(dp(26), dp(26)).apply { leftMargin = dp(10) })
+            box.addView(line)
         }
         paint()
-        return row
+        return box
     }
 
     private fun openAppDetail(pkg: String) {
@@ -2111,9 +2170,10 @@ class MainActivity : Activity() {
         val radius = dp(7).toFloat()
         val cx = size - radius - dp(2)
         val cy = radius + dp(2)
-        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+        // 紅緋の点。まわりを背景色で抜いて、枠と重ならないように
+        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = bgColor }
         canvas.drawCircle(cx, cy, radius + dp(2), stroke)
-        val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#FF8C00") }
+        val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = orange }
         canvas.drawCircle(cx, cy, radius, dot)
     }
 

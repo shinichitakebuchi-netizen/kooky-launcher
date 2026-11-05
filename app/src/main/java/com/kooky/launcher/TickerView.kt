@@ -27,7 +27,7 @@ class TickerView(context: Context) : View(context) {
     private val d = resources.displayMetrics.density
     private val speedPerSec = 66f * d          // 1秒で進む量（時間基準なので画面の速さに左右されない）
     private var lastFrameNs = 0L
-    private val orange = Color.parseColor("#FF8C00")
+    private val orange = Wa.BENIHI
     private val normal = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12f * d }
     private val bold = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 12f * d; typeface = Typeface.DEFAULT_BOLD
@@ -97,7 +97,7 @@ class TickerView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         if (segs.isEmpty() || loopWidth <= 0f) return
-        normal.color = if (lightMode) Color.parseColor("#1C1C1E") else Color.WHITE
+        normal.color = Wa.ink(lightMode)
         bold.color = orange
         val base = height / 2f - (normal.descent() + normal.ascent()) / 2f
         // 画面を埋めるまでループを繰り返し描く

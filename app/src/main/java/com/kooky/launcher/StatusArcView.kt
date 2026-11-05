@@ -2,7 +2,6 @@ package com.kooky.launcher
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
@@ -27,14 +26,14 @@ class StatusArcView(context: Context) : View(context) {
     var lightMode: Boolean = false
         set(value) { field = value; invalidate() }
 
-    private val orange = Color.parseColor("#FF8C00")
-    private val green = Color.parseColor("#4CD964")
-    private val red = Color.parseColor("#FF3B30")
+    private val orange = Wa.BENIHI        // 残量・電波：紅緋
+    private val green = Wa.WAKATAKE       // 充電中：若竹色
+    private val red = Wa.KARAKURENAI      // 20%以下・急速充電：韓紅花
 
-    private val trackColor get() = if (lightMode) Color.parseColor("#1A000000") else Color.parseColor("#29FFFFFF")
-    private val subColor get() = if (lightMode) Color.parseColor("#6E6E73") else Color.parseColor("#999999")
-    private val offColor get() = if (lightMode) Color.parseColor("#C7C7CC") else Color.parseColor("#48484A")
-    private val bgColor get() = if (lightMode) Color.parseColor("#F5F5F7") else Color.BLACK
+    private val trackColor get() = Wa.line(lightMode)   // 輪っか：利休鼠
+    private val subColor get() = Wa.sub(lightMode)
+    private val offColor get() = Wa.line(lightMode)
+    private val bgColor get() = Wa.bg(lightMode)
 
     private val arc = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
     private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
@@ -101,7 +100,7 @@ class StatusArcView(context: Context) : View(context) {
             canvas.drawArc(rect, start, sweep, false, arc)
         }
 
-        // 残量の輪っか：充電中は緑/赤（点滅）、20%以下は赤、それ以外はオレンジ
+        // 残量の輪っか：充電中は若竹色/韓紅花（点滅）、20%以下は韓紅花、それ以外は紅緋
         if (chargeMode != 0) {
             arc.color = chargeColor
             arc.alpha = (blinkAlpha * 255).toInt().coerceIn(0, 255)

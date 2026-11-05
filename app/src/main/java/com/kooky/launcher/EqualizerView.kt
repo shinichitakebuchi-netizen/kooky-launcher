@@ -28,7 +28,7 @@ class EqualizerView(context: Context) : View(context) {
     private val bands = 5
     private val target = FloatArray(bands) { 0.12f }
     private val level = FloatArray(bands) { 0.12f }
-    private val orange = Color.parseColor("#FF8C00")
+    private val orange = Wa.BENIHI
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = orange }
     private val d = resources.displayMetrics.density
 

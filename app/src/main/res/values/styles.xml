@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ダイアログ（ダーク）：藍・鳥の子・甕覗・紅緋 -->
+    <style name="WaDialog" parent="@android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/wa_dialog_bg</item>
+        <item name="android:colorBackground">#264348</item>
+        <item name="android:textColorPrimary">#E2BE9F</item>
+        <item name="android:textColorSecondary">#C6C2B6</item>
+        <item name="android:textColor">#E2BE9F</item>
+        <item name="android:colorAccent">#F35336</item>
+        <item name="android:colorControlNormal">#656255</item>
+        <item name="android:colorControlActivated">#F35336</item>
+        <item name="android:backgroundDimAmount">0.5</item>
+        <item name="android:windowElevation">0dp</item>
+    </style>
+    <!-- ダイアログ（ライト）：鳥の子の地に藍の文字 -->
+    <style name="WaDialog.Light" parent="@android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/wa_dialog_bg_light</item>
+        <item name="android:colorBackground">#E2BE9F</item>
+        <item name="android:textColorPrimary">#264348</item>
+        <item name="android:textColorSecondary">#656255</item>
+        <item name="android:textColor">#264348</item>
+        <item name="android:colorAccent">#F35336</item>
+        <item name="android:colorControlNormal">#656255</item>
+        <item name="android:colorControlActivated">#F35336</item>
+        <item name="android:backgroundDimAmount">0.4</item>
+        <item name="android:windowElevation">0dp</item>
+    </style>
+</resources>

@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 庵（いおり）：墨地に、朱の屋根の一線と、生成りの小さな灯り（輪） -->
+<!-- 庵（いおり）：藍色の地に、紅緋の屋根の一線と、甕覗の小さな灯り（輪） -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <path android:strokeColor="#E0632F" android:strokeWidth="1.7"
+    <path android:strokeColor="#F35336" android:strokeWidth="1.7"
         android:strokeLineCap="round" android:strokeLineJoin="round"
         android:pathData="M40,57 L54,44 L68,57" />
-    <path android:strokeColor="#ECE7DC" android:strokeWidth="1.4"
+    <path android:strokeColor="#C6C2B6" android:strokeWidth="1.4"
         android:pathData="M54,60m-3.6,0a3.6,3.6 0,1 1,7.2 0a3.6,3.6 0,1 1,-7.2 0" />
 </vector>

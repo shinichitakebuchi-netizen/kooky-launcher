@@ -2,7 +2,6 @@ package com.kooky.launcher
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.view.View
@@ -24,11 +23,11 @@ class StatItemView(context: Context) : View(context) {
     var lightMode: Boolean = false
         set(v) { field = v; invalidate() }
 
-    private val orange = Color.parseColor("#FF8C00")
-    private val red = Color.parseColor("#FF3B30")
-    private val ink get() = if (lightMode) Color.parseColor("#1C1C1E") else Color.WHITE
-    private val sub get() = if (lightMode) Color.parseColor("#6E6E73") else Color.parseColor("#CCCCCC")
-    private val track get() = if (lightMode) Color.parseColor("#1A000000") else Color.parseColor("#29FFFFFF")
+    private val orange = Wa.BENIHI          // ゲージ：紅緋
+    private val red = Wa.KARAKURENAI        // 上限近く：韓紅花
+    private val ink get() = Wa.ink(lightMode)
+    private val sub get() = Wa.sub(lightMode)
+    private val track get() = Wa.line(lightMode)
 
     // 全体の大きさ（1.0=日付と同じくらい、0.6=その60%）
     private val k = 0.6f

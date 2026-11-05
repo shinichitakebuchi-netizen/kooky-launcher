@@ -65,10 +65,10 @@ object LockWallpaper {
         val w = minOf(dm.widthPixels, dm.heightPixels).coerceAtLeast(720)
         val h = maxOf(dm.widthPixels, dm.heightPixels).coerceAtLeast(1280)
 
-        val bg = if (light) Color.parseColor("#F5F5F7") else Color.BLACK
-        val future = if (light) Color.parseColor("#1C1C1E") else Color.WHITE
-        val past = if (light) Color.parseColor("#1F000000") else Color.parseColor("#29FFFFFF")
-        val orange = Color.parseColor("#FF8C00")
+        val bg = Wa.bg(light)          // 藍色（ライトは鳥の子色）
+        val future = Wa.ink(light)     // これからの日：鳥の子色（ライトは藍色）
+        val past = Wa.line(light)      // 過ぎた日：利休鼠
+        val orange = Wa.BENIHI         // 今日：紅緋
 
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)

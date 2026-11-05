@@ -28,10 +28,10 @@ class MediaBar(context: Context) : FrameLayout(context) {
     var onActiveChanged: ((Boolean) -> Unit)? = null
 
     private val seekSec = 10
-    private val orange = Color.parseColor("#FF8C00")
-    private val ink get() = if (lightMode) Color.parseColor("#1C1C1E") else Color.WHITE
-    private val sub get() = if (lightMode) Color.parseColor("#6E6E73") else Color.parseColor("#9A9AA2")
-    private val trackColor get() = if (lightMode) Color.parseColor("#1A000000") else Color.parseColor("#29FFFFFF")
+    private val orange = Wa.BENIHI
+    private val ink get() = Wa.ink(lightMode)
+    private val sub get() = Wa.sub(lightMode)
+    private val trackColor get() = Wa.line(lightMode)
 
     private val d = resources.displayMetrics.density
     private fun dp(v: Int) = (v * d).toInt()
@@ -95,7 +95,7 @@ class MediaBar(context: Context) : FrameLayout(context) {
         addView(col, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
 
         pill.apply {
-            textSize = 12f; setTypeface(typeface, Typeface.BOLD); setTextColor(Color.BLACK)
+            textSize = 12f; setTypeface(typeface, Typeface.BOLD); setTextColor(Wa.AI)
             setPadding(dp(10), dp(4), dp(10), dp(4)); visibility = GONE
             background = GradientDrawable().apply { cornerRadius = dp(20).toFloat(); setColor(orange) }
         }
