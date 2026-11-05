@@ -2093,71 +2093,206 @@ class MainActivity : Activity() {
         }
     }
 
+    // ===== 設定（墨・生成り・朱の全画面。縁アプリと同じデザイン） =====
+    private val SUMI = Color.parseColor("#1E2024")
+    private val KINARI = Color.parseColor("#ECE7DC")
+    private val USUZUMI = Color.parseColor("#8C8F96")
+    private val SUMI_LINE = Color.parseColor("#3A3D44")
+    private val SHU = Color.parseColor("#E0632F")
+    private var settingsDialog: android.app.Dialog? = null
+    private var settingsCol: LinearLayout? = null
+
     private fun showSettingsMenu() {
-        lateinit var dialog: AlertDialog
-        val card = menuCard()
-        card.addView(menuTitle("設定"))
-        card.addView(menuDivider())
-        card.addView(menuRow("NAME", if (showLabels) "表示" else "非表示",
-            if (showLabels) orange else grayText) {
-            showLabels = !showLabels; prefs.edit().putBoolean("show_labels", showLabels).apply()
-            appAdapter.notifyDataSetChanged(); dialog.dismiss(); showSettingsMenu()
+        if (settingsDialog?.isShowing == true) { renderSettings(); return }
+        val d = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(28), dp(36), dp(28), dp(32))
+        }
+        val scroll = ScrollView(this).apply {
+            setBackgroundColor(SUMI)
+            isFillViewport = true
+            addView(col, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        d.setContentView(scroll)
+        d.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(SUMI))
+        d.setOnDismissListener { settingsDialog = null; settingsCol = null; hideSystemBars() }
+        settingsDialog = d
+        settingsCol = col
+        renderSettings()
+        d.show()
+    }
+
+    private fun renderSettings() {
+        val col = settingsCol ?: return
+        col.removeAllViews()
+        val serif = Typeface.create(Typeface.SERIF, Typeface.NORMAL)
+        val serifBold = Typeface.create(Typeface.SERIF, Typeface.BOLD)
+
+        fun rule(thin: Boolean = false) = View(this).apply {
+            setBackgroundColor(SUMI_LINE)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, if (thin) 1 else dp(1))
+        }
+        fun note(t: String) = col.addView(TextView(this).apply {
+            text = t; setTextColor(USUZUMI); textSize = 12f; setLineSpacing(dp(6).toFloat(), 1f)
         })
-        card.addView(menuDivider())
-        card.addView(menuRow("ICON", if (useDesignIcon) "オリジナル" else "シンプル", orange) {
-            useDesignIcon = !useDesignIcon; prefs.edit().putBoolean("use_design_icon", useDesignIcon).apply()
-            appAdapter.notifyDataSetChanged(); dialog.dismiss(); showSettingsMenu()
+        fun section(t: String) {
+            col.addView(TextView(this).apply {
+                text = t; setTextColor(SHU); textSize = 15f; typeface = serif; letterSpacing = 0.27f
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(40); bottomMargin = dp(10)
+            })
+            col.addView(rule())
+        }
+        fun label(t: String) = col.addView(TextView(this).apply {
+            text = t; setTextColor(KINARI); textSize = 15f
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(18); bottomMargin = dp(10)
         })
-        card.addView(menuDivider())
-        card.addView(menuRow("INITIAL", if (showInitial) "表示" else "非表示",
-            if (showInitial) orange else grayText) {
-            showInitial = !showInitial; prefs.edit().putBoolean("show_initial", showInitial).apply()
-            appAdapter.notifyDataSetChanged(); dialog.dismiss(); showSettingsMenu()
+        // 入／切：行全体を押して切り替え
+        fun toggle(t: String, on: Boolean, onChange: (Boolean) -> Unit) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(14), 0, dp(14))
+                isClickable = true
+                setOnClickListener { onChange(!on) }
+            }
+            row.addView(TextView(this).apply { text = t; setTextColor(KINARI); textSize = 15f },
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(TextView(this).apply { text = "入"; setTextColor(if (on) SHU else SUMI_LINE); textSize = 14f })
+            row.addView(TextView(this).apply { text = "　/　"; setTextColor(SUMI_LINE); textSize = 12f })
+            row.addView(TextView(this).apply { text = "切"; setTextColor(if (on) SUMI_LINE else KINARI); textSize = 14f })
+            col.addView(row)
+            col.addView(rule(thin = true))
+        }
+        // 値の行：押すと入力
+        fun valueRow(t: String, v: String, onClick: () -> Unit) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(14), 0, dp(14))
+                isClickable = true
+                setOnClickListener { onClick() }
+            }
+            row.addView(TextView(this).apply { text = t; setTextColor(KINARI); textSize = 15f },
+                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(TextView(this).apply { text = v; setTextColor(USUZUMI); textSize = 14f })
+            col.addView(row)
+            col.addView(rule(thin = true))
+        }
+        // 選択肢：選択中は生成りで塗り、それ以外は細い枠
+        fun choices(items: List<String>, selected: Int, onPick: (Int) -> Unit) {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            items.forEachIndexed { i, t ->
+                val sel = i == selected
+                row.addView(TextView(this).apply {
+                    text = t; textSize = 14f
+                    setTextColor(if (sel) SUMI else KINARI)
+                    setPadding(dp(16), dp(8), dp(16), dp(8))
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(2).toFloat()
+                        if (sel) setColor(KINARI) else { setColor(Color.TRANSPARENT); setStroke(dp(1), SUMI_LINE) }
+                    }
+                    isClickable = true
+                    setOnClickListener { onPick(i) }
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    if (i > 0) leftMargin = dp(10)
+                })
+            }
+            col.addView(row)
+        }
+
+        // ── 表題 ──
+        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM }
+        head.addView(TextView(this).apply { text = "庵"; setTextColor(KINARI); textSize = 44f; typeface = serifBold })
+        head.addView(TextView(this).apply {
+            text = "いおり"; setTextColor(USUZUMI); textSize = 13f; letterSpacing = 0.23f
+            setPadding(dp(12), 0, 0, dp(10))
         })
-        card.addView(menuDivider())
-        card.addView(menuRow("ROBOT", if (showRobot) "表示" else "非表示",
-            if (showRobot) orange else grayText) {
-            showRobot = !showRobot; prefs.edit().putBoolean("show_robot", showRobot).apply()
-            applyRobotVisibility(); dialog.dismiss(); showSettingsMenu()
+        head.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        head.addView(TextView(this).apply {
+            text = "閉じる"; setTextColor(USUZUMI); textSize = 13f; letterSpacing = 0.15f
+            setPadding(dp(12), dp(8), 0, dp(10)); isClickable = true
+            setOnClickListener { settingsDialog?.dismiss() }
         })
-        card.addView(menuDivider())
-        card.addView(menuRow("THEME", themeLabel(), orange) {
-            themeMode = (themeMode + 1) % 3
-            prefs.edit().putInt("theme_mode", themeMode).apply()
-            applyTheme(); dialog.dismiss(); showSettingsMenu()
-        })
-        card.addView(menuDivider())
-        card.addView(menuRow("DATA", "締め${closeDayLabel()}・${dataLimitGb()}GB", orange) {
-            dialog.dismiss(); showDataSettings()
-        })
-        card.addView(menuDivider())
-        val lockOn = LockWallpaper.isOn(this)
-        card.addView(menuRow("LOCK", if (lockOn) "オン" else "オフ",
-            if (lockOn) orange else grayText) {
-            val on = !LockWallpaper.isOn(this)
+        col.addView(head)
+        col.addView(View(this), LinearLayout.LayoutParams(1, dp(10)))
+        note("ホームの見た目と動きを整えます。変えた内容はすぐにホームに反映されます。")
+
+        // ── 表示 ──
+        section("表示")
+        toggle("アプリ名", showLabels) {
+            showLabels = it; prefs.edit().putBoolean("show_labels", it).apply()
+            appAdapter.notifyDataSetChanged(); renderSettings()
+        }
+        toggle("頭文字", showInitial) {
+            showInitial = it; prefs.edit().putBoolean("show_initial", it).apply()
+            appAdapter.notifyDataSetChanged(); renderSettings()
+        }
+        label("アイコン")
+        choices(listOf("オリジナル", "シンプル"), if (useDesignIcon) 0 else 1) {
+            useDesignIcon = it == 0; prefs.edit().putBoolean("use_design_icon", useDesignIcon).apply()
+            appAdapter.notifyDataSetChanged(); renderSettings()
+        }
+
+        // ── 色合い ──
+        section("色合い")
+        col.addView(View(this), LinearLayout.LayoutParams(1, dp(14)))
+        choices(listOf("ダーク", "ライト", "オート"), themeMode) {
+            themeMode = it; prefs.edit().putInt("theme_mode", it).apply()
+            applyTheme(); renderSettings()
+        }
+        col.addView(View(this), LinearLayout.LayoutParams(1, dp(10)))
+        note("オートは、朝6時から夜9時までライト、それ以外はダークになります。")
+
+        // ── ロボ ──
+        section("ロボ")
+        toggle("表示する", showRobot) {
+            showRobot = it; prefs.edit().putBoolean("show_robot", it).apply()
+            applyRobotVisibility(); renderSettings()
+        }
+
+        // ── 通信量 ──
+        section("通信量")
+        valueRow("締め日", closeDayLabel()) { showDataSettings() }
+        valueRow("月の上限", "${dataLimitGb()}GB") { showDataSettings() }
+
+        // ── ロック画面 ──
+        section("ロック画面")
+        toggle("1年の○を壁紙にする", LockWallpaper.isOn(this)) { on ->
             prefs.edit().putBoolean(LockWallpaper.KEY_ON, on).apply()
-            dialog.dismiss()
+            renderSettings()
             thread {
                 if (on) LockWallpaper.update(this, true) else LockWallpaper.turnOff(this)
                 runOnUiThread {
                     Toast.makeText(this,
                         if (on) "ロック画面の壁紙を設定しました" else "ロック画面の壁紙を元に戻しました",
                         Toast.LENGTH_SHORT).show()
-                    showSettingsMenu()
                 }
             }
+        }
+
+        // ── 控え ──
+        section("控え")
+        col.addView(View(this), LinearLayout.LayoutParams(1, dp(14)))
+        note("利用回数・名前の変更・カテゴリ・設定をファイルに保存し、あとで戻せます。")
+        col.addView(View(this), LinearLayout.LayoutParams(1, dp(14)))
+        choices(listOf("書き出す", "読み込む"), -1) {
+            settingsDialog?.dismiss()
+            if (it == 0) startExport() else startImport()
+        }
+
+        // ── 更新 ──
+        val ver = try { packageManager.getPackageInfo(packageName, 0).versionName ?: "" } catch (e: Exception) { "" }
+        col.addView(TextView(this).apply {
+            text = "更新する　v$ver"; setTextColor(USUZUMI); textSize = 13f; letterSpacing = 0.15f
+            gravity = Gravity.CENTER
+            setPadding(dp(16), dp(12), dp(16), dp(12)); isClickable = true
+            setOnClickListener { settingsDialog?.dismiss(); openUpdatePage() }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(56)
         })
-        card.addView(menuDivider())
-        card.addView(menuRow("BACKUP", "›", grayText) {
-            dialog.dismiss(); showBackupMenu()
-        })
-        card.addView(menuDivider())
-        card.addView(menuRow("UPDATE", "›", grayText) {
-            dialog.dismiss(); openUpdatePage()
-        })
-        dialog = dialogBuilder().setView(card).create()
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
-        dialog.show()
     }
 
     // ===== バックアップ（書き出し／読み込み） =====
