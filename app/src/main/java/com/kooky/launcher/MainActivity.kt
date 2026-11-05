@@ -99,7 +99,7 @@ class MainActivity : Activity() {
     private val cellPadDp = 14
     private val gridRows = 3
     private val cellHeightDp = 108
-    private val cornerR = 6
+    private val cornerR = 2
     private val fastChargeMa = 1500
 
     // テーマ：0=ダーク / 1=ライト / 2=オート(6:00〜21:00ライト)
@@ -372,12 +372,7 @@ class MainActivity : Activity() {
         searchBarRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(cornerR).toFloat()
-                setColor(Color.TRANSPARENT)
-                setStroke(dp(2), orange)
-            }
+            background = searchUnderline()
             setPadding(0, 0, 0, 0)
             addView(searchBar, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(searchIcon, LinearLayout.LayoutParams(dp(40), dp(40)))
@@ -567,6 +562,7 @@ class MainActivity : Activity() {
         dateText.setTextColor(subText)
         searchBar.setTextColor(textColor)
         searchIcon.setImageDrawable(circleIcon())
+        searchBarRow.background = searchUnderline()
         weatherView.lightMode = isLight
         statusArc.lightMode = isLight
         dataStat.lightMode = isLight
@@ -683,7 +679,7 @@ class MainActivity : Activity() {
                 gravity = Gravity.CENTER
                 setPadding(0, dp(9), 0, dp(9))
                 background = GradientDrawable().apply {
-                    cornerRadius = dp(cornerR).toFloat(); setColor(Color.TRANSPARENT); setStroke(dp(2), orange)
+                    cornerRadius = dp(cornerR).toFloat(); setColor(Color.TRANSPARENT); setStroke(dp(1), orange)
                 }
                 isClickable = true
                 setOnClickListener { runSpeedTest(area, { alive }) { showButton("もう一度測る") } }
@@ -1231,12 +1227,23 @@ class MainActivity : Activity() {
             .show()
     }
 
+    // 検索バー：下に細い線が1本だけ
+    private fun searchUnderline(): Drawable {
+        val line = GradientDrawable().apply {
+            setColor(Color.TRANSPARENT)
+            setStroke(dp(1), textColor)
+        }
+        return android.graphics.drawable.LayerDrawable(arrayOf(line)).apply {
+            setLayerInset(0, -dp(2), -dp(2), -dp(2), 0)
+        }
+    }
+
     private fun circleIcon(): Drawable {
         val size = dp(24)
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; color = textColor; strokeWidth = dp(2).toFloat()
+            style = Paint.Style.STROKE; color = textColor; strokeWidth = 1.3f * resources.displayMetrics.density
         }
         // ハンバーガーマーク（横線3本）
         p.strokeCap = Paint.Cap.ROUND
@@ -2050,10 +2057,10 @@ class MainActivity : Activity() {
         val pad = dp(5)
         base.setBounds(pad, pad, size - pad, size - pad); base.draw(canvas)
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; this.color = color; strokeWidth = dp(2).toFloat()
+            style = Paint.Style.STROKE; this.color = color; strokeWidth = dp(1).toFloat()
         }
         val i = dp(2).toFloat()
-        canvas.drawRoundRect(i, i, size - i, size - i, dp(cornerR + 2).toFloat(), dp(cornerR + 2).toFloat(), p)
+        canvas.drawRoundRect(i, i, size - i, size - i, dp(cornerR).toFloat(), dp(cornerR).toFloat(), p)
         if (withNotif) drawDot(canvas, size)
         return BitmapDrawable(resources, bmp)
     }
@@ -2077,7 +2084,7 @@ class MainActivity : Activity() {
         canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, fill)
         val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE; color = favColorOf(app.packageName) ?: textColor
-            strokeWidth = dp(2).toFloat()
+            strokeWidth = dp(1).toFloat()
         }
         canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, border)
         if (showInitial) {
