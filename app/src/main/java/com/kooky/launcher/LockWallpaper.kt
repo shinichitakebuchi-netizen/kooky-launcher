@@ -24,14 +24,7 @@ object LockWallpaper {
     fun isOn(ctx: Context): Boolean =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_ON, false)
 
-    private fun isLight(ctx: Context): Boolean {
-        val mode = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt("theme_mode", 0)
-        return when (mode) {
-            1 -> true
-            2 -> Calendar.getInstance().get(Calendar.HOUR_OF_DAY) in 6..20
-            else -> false
-        }
-    }
+    private fun isLight(ctx: Context): Boolean = ThemeClock.isLight(ctx)
 
     // 日付かテーマが変わっていたら作り直す（force=trueなら必ず）
     fun update(ctx: Context, force: Boolean = false) {
@@ -103,11 +96,13 @@ object LockWallpaper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
-    // 次の 0:01 / 6:00 / 21:00 のうち一番近い時刻に更新を予約
+    // 次の 0:01 / 日の出 / 日の入り のうち一番近い時刻に更新を予約
     fun schedule(ctx: Context) {
         if (!isOn(ctx)) return
         val now = Calendar.getInstance()
-        val targets = listOf(0 to 1, 6 to 0, 21 to 0).map { (hh, mm) ->
+        // 0:01（日付）と、今日・明日の日の出・日の入りの1分後（移ろい）
+        val (rise, set) = ThemeClock.sunTimes(ctx)
+        val targets = listOf(0 to 1, (rise + 1) / 60 to (rise + 1) % 60, (set + 1) / 60 to (set + 1) % 60).map { (hh, mm) ->
             Calendar.getInstance().apply {
                 set(Calendar.HOUR_OF_DAY, hh); set(Calendar.MINUTE, mm)
                 set(Calendar.SECOND, 5); set(Calendar.MILLISECOND, 0)

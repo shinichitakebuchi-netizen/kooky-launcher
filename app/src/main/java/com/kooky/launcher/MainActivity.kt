@@ -102,7 +102,7 @@ class MainActivity : Activity() {
     private val cornerR = 2
     private val fastChargeMa = 1500
 
-    // テーマ：0=ダーク / 1=ライト / 2=オート(6:00〜21:00ライト)
+    // テーマ：0=墨（ダーク）/ 1=白練（ライト）/ 2=移ろい（日の出〜日の入りは白練）
     private var themeMode = 0
     private var isLight = false
 
@@ -194,6 +194,7 @@ class MainActivity : Activity() {
     private val hmFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val secFormat = SimpleDateFormat("ss", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("yyyy.MM.dd-EEE", Locale.JAPANESE)
+    private var lastThemeMinute = -1L
     private val tick = object : Runnable {
         override fun run() {
             val now = Date()
@@ -204,7 +205,11 @@ class MainActivity : Activity() {
             sp.setSpan(RelativeSizeSpan(0.6f), hm.length + 1, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             clockText.text = sp
             dateText.text = dateFormat.format(now)
-            if (themeMode == 2 && computeLight() != isLight) applyTheme()
+            // 移ろい：分が変わったときに日の出・日の入りを過ぎたか確かめて、色を切り替える
+            if (themeMode == 2 && now.time / 60000 != lastThemeMinute) {
+                lastThemeMinute = now.time / 60000
+                if (computeLight() != isLight) { applyTheme(); thread { LockWallpaper.update(this@MainActivity) } }
+            }
             timeHandler.postDelayed(this, 1000)
         }
     }
@@ -541,22 +546,10 @@ class MainActivity : Activity() {
         hideSystemBars()
     }
 
-    private fun computeLight(): Boolean {
-        return when (themeMode) {
-            1 -> true
-            2 -> {
-                val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-                hour in 6..20
-            }
-            else -> false
-        }
-    }
+    // 移ろい：日の出から日の入りまで白練、それ以外は墨
+    private fun computeLight(): Boolean = ThemeClock.isLight(this, themeMode)
 
-    private fun themeLabel(): String = when (themeMode) {
-        1 -> "ライト"
-        2 -> "オート"
-        else -> "ダーク"
-    }
+    private fun themeLabel(): String = ThemeClock.NAMES.getOrElse(themeMode) { ThemeClock.NAMES[0] }
 
     // ===== 文字のフォント（縁と同じ3種類） =====
     private var fontIndex = 0
@@ -1088,7 +1081,10 @@ class MainActivity : Activity() {
                 val loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER)
                     ?: lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
                     ?: lm.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER)
-                if (loc != null) { lat = loc.latitude; lon = loc.longitude }
+                if (loc != null) {
+                    lat = loc.latitude; lon = loc.longitude
+                    ThemeClock.saveLocation(this, lat, lon)   // 移ろいの日の出・日の入りにも使う
+                }
             }
         } catch (e: Exception) {}
         fetchWeather(lat, lon, showResult)
@@ -1516,12 +1512,14 @@ class MainActivity : Activity() {
         // ── 色合い ──
         section("色合い")
         col.addView(View(this), LinearLayout.LayoutParams(1, dp(14)))
-        choices(listOf("ダーク", "ライト", "オート"), themeMode) {
+        choices(ThemeClock.NAMES, themeMode) {
             themeMode = it; prefs.edit().putInt("theme_mode", it).apply()
             applyTheme(); renderSettings()
         }
         col.addView(View(this), LinearLayout.LayoutParams(1, dp(10)))
-        note("オートは、朝6時から夜9時までライト、それ以外はダークになります。")
+        val (rise, set) = ThemeClock.sunTimes(this)
+        note("移ろいは、日の出から日の入りまで白練、それ以外は墨になります。" +
+            "今日は ${rise / 60}:${"%02d".format(rise % 60)} 〜 ${set / 60}:${"%02d".format(set % 60)}。")
 
         // 差し色：見出し・ゲージ・電池の輪などの強調の色。18色（6色×3行）から選ぶ
         label("差し色")
