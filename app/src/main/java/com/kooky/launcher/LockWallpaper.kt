@@ -68,7 +68,8 @@ object LockWallpaper {
         val bg = Wa.bg(light)          // 藍色（ライトは鳥の子色）
         val future = Wa.ink(light)     // これからの日：鳥の子色（ライトは藍色）
         val past = Wa.line(light)      // 過ぎた日：利休鼠
-        val orange = Wa.BENIHI         // 今日：紅緋
+        Wa.loadAccent(ctx)
+        val orange = Wa.accent         // 今日：差し色（初期値は紅緋）
 
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)

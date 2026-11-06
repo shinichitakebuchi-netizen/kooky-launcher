@@ -28,7 +28,7 @@ class MediaBar(context: Context) : FrameLayout(context) {
     var onActiveChanged: ((Boolean) -> Unit)? = null
 
     private val seekSec = 10
-    private val orange = Wa.BENIHI
+    private val orange get() = Wa.accent   // 差し色（設定で選んだ色。初期値は紅緋）
     private val ink get() = Wa.ink(lightMode)
     private val sub get() = Wa.sub(lightMode)
     private val trackColor get() = Wa.line(lightMode)
@@ -110,7 +110,10 @@ class MediaBar(context: Context) : FrameLayout(context) {
         restyle()
     }
 
-    private fun restyle() {
+    // 色を塗り直す（テーマや差し色が変わったとき）
+    fun restyle() {
+        appText.setTextColor(orange)
+        pill.background = GradientDrawable().apply { cornerRadius = dp(20).toFloat(); setColor(orange) }
         titleText.setTextColor(ink)
         posText.setTextColor(sub); lenText.setTextColor(sub)
         rw.color = ink; ff.color = ink; pp.color = orange

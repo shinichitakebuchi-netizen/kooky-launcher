@@ -31,7 +31,7 @@ class StatItemView(context: Context) : View(context) {
             invalidate()
         }
 
-    private val orange = Wa.BENIHI          // ゲージ：紅緋
+    private val orange get() = Wa.accent   // 差し色（設定で選んだ色。初期値は紅緋）
     private val red = Wa.KARAKURENAI        // 上限近く：韓紅花
     private val ink get() = Wa.ink(lightMode)
     private val sub get() = Wa.sub(lightMode)

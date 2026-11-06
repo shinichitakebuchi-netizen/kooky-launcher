@@ -16,7 +16,7 @@ class WeatherView(context: Context) : View(context) {
     var lightMode: Boolean = false
         set(value) { field = value; invalidate() }
 
-    private val orange = Wa.BENIHI        // 太陽・月：紅緋
+    private val orange get() = Wa.accent   // 差し色（設定で選んだ色。初期値は紅緋）
     private val bolt = Wa.UKON            // 稲妻：鬱金色
     private val lightMain = Wa.RIKYU      // ライトの雲：利休鼠
     private val lightSoft = Wa.KAMENOZOKI // ライトの奥の雲：甕覗

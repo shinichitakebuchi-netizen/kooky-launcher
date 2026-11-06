@@ -33,7 +33,7 @@ class StatusArcView(context: Context) : View(context) {
             invalidate()
         }
 
-    private val orange = Wa.BENIHI        // 残量・電波：紅緋
+    private val orange get() = Wa.accent   // 差し色（設定で選んだ色。初期値は紅緋）
     private val green = Wa.WAKATAKE       // 充電中：若竹色
     private val red = Wa.KARAKURENAI      // 20%以下・急速充電：韓紅花
 

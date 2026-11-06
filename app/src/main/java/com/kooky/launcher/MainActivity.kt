@@ -107,7 +107,7 @@ class MainActivity : Activity() {
     private var isLight = false
 
     // 色はすべて Wa（日本の伝統色）から。ダーク＝藍の地、ライト＝鳥の子の地
-    private val orange = Wa.BENIHI                     // 強調（紅緋）
+    private val orange get() = Wa.accent   // 差し色（設定で選んだ色。初期値は紅緋）
     private val bgColor get() = Wa.bg(isLight)         // 背景（藍色）
     private val textColor get() = Wa.ink(isLight)      // 文字・主（鳥の子色）
     private val subText get() = Wa.sub(isLight)        // 文字・補足（甕覗70%）
@@ -238,6 +238,7 @@ class MainActivity : Activity() {
         useDesignIcon = prefs.getBoolean("use_design_icon", true)
         showInitial = prefs.getBoolean("show_initial", true)
         themeMode = prefs.getInt("theme_mode", 0)
+        Wa.loadAccent(this)
         fontIndex = prefs.getInt("font", 0).coerceIn(0, AppFonts.names.size - 1)
         appTf = AppFonts.typeface(this, fontIndex)
         isLight = computeLight()
@@ -573,6 +574,16 @@ class MainActivity : Activity() {
             }
             is ViewGroup -> for (i in 0 until v.childCount) applyFont(v.getChildAt(i))
         }
+    }
+
+    // 差し色を変える → ホーム・設定・ロック画面の壁紙に反映
+    private fun setAccentColor(i: Int) {
+        Wa.setAccent(i)
+        prefs.edit().putInt(Wa.KEY_ACCENT, Wa.accentIndex).apply()
+        applyTheme()
+        mediaBar.restyle()
+        renderSettings()
+        thread { LockWallpaper.update(this, true) }
     }
 
     private fun setFont(i: Int) {
@@ -1357,7 +1368,7 @@ class MainActivity : Activity() {
     private val KINARI = Wa.TORINOKO      // 文字：鳥の子色
     private val USUZUMI = Wa.KAMENOZOKI70 // 補足：甕覗 70%
     private val SUMI_LINE = Wa.RIKYU      // 罫線：利休鼠
-    private val SHU = Wa.BENIHI           // 見出し：紅緋
+    private val SHU get() = Wa.accent     // 見出し：差し色（初期値は紅緋）
     private var settingsDialog: android.app.Dialog? = null
     private var settingsCol: LinearLayout? = null
 
@@ -1510,10 +1521,50 @@ class MainActivity : Activity() {
         col.addView(View(this), LinearLayout.LayoutParams(1, dp(10)))
         note("オートは、朝6時から夜9時までライト、それ以外はダークになります。")
 
+        // 差し色：見出し・ゲージ・電池の輪などの強調の色。18色（6色×3行）から選ぶ
+        label("差し色")
+        for (r in 0 until 3) {
+            val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            for (c in 0 until 6) {
+                val i = r * 6 + c
+                val sel = i == Wa.accentIndex
+                val cell = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    setPadding(0, dp(8), 0, 0)
+                    isClickable = true
+                    contentDescription = Wa.PICK_NAMES[i]
+                    setOnClickListener { if (i != Wa.accentIndex) setAccentColor(i) }
+                }
+                val ring = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL; setColor(Color.TRANSPARENT)
+                    if (sel) setStroke(dp(1), KINARI)   // 選択中は鳥の子色の細い輪
+                }
+                val dot = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL; setColor(Wa.PICK[i])
+                    setStroke(maxOf(1, (0.5f * resources.displayMetrics.density).toInt()), SUMI_LINE)
+                }
+                cell.addView(View(this).apply {
+                    background = android.graphics.drawable.LayerDrawable(arrayOf(ring, dot)).apply {
+                        setLayerInset(1, dp(3), dp(3), dp(3), dp(3))
+                    }
+                }, LinearLayout.LayoutParams(dp(32), dp(32)))
+                cell.addView(TextView(this).apply {
+                    text = Wa.PICK_NAMES[i]; setTextColor(USUZUMI); textSize = 10f
+                    maxLines = 1; gravity = Gravity.CENTER; setPadding(0, dp(3), 0, 0)
+                })
+                line.addView(cell, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            }
+            col.addView(line)
+        }
+        col.addView(View(this), LinearLayout.LayoutParams(1, dp(10)))
+        note("見出し・ゲージ・電池の輪・ロック画面の今日の○などの色です。アイコンの色は変わりません。")
+
         // ── 文字 ──
         section("文字")
         col.addView(View(this), LinearLayout.LayoutParams(1, dp(14)))
-        AppFonts.names.forEachIndexed { i, name ->
+        AppFonts.order.forEachIndexed { pos, i ->
+            val name = AppFonts.names[i]
             val sel = i == fontIndex
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -1534,7 +1585,7 @@ class MainActivity : Activity() {
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             row.addView(TextView(this).apply { text = name; setTextColor(USUZUMI); textSize = 12f })
             col.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                if (i > 0) topMargin = dp(10)
+                if (pos > 0) topMargin = dp(10)
             })
         }
         col.addView(View(this), LinearLayout.LayoutParams(1, dp(10)))

@@ -36,7 +36,7 @@ class TickerView(context: Context) : View(context) {
     private val d = resources.displayMetrics.density
     private val speedPerSec = 66f * d          // 1秒で進む量（時間基準なので画面の速さに左右されない）
     private var lastFrameNs = 0L
-    private val orange = Wa.BENIHI
+    private val orange get() = Wa.accent   // 差し色（設定で選んだ色。初期値は紅緋）
     private val normal = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12f * d }
     private val bold = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 12f * d; typeface = Typeface.DEFAULT_BOLD

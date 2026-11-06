@@ -28,8 +28,8 @@ class EqualizerView(context: Context) : View(context) {
     private val bands = 5
     private val target = FloatArray(bands) { 0.12f }
     private val level = FloatArray(bands) { 0.12f }
-    private val orange = Wa.BENIHI
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = orange }
+    private val orange get() = Wa.accent   // 差し色（設定で選んだ色。初期値は紅緋）
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val d = resources.displayMetrics.density
 
     private var visualizer: Visualizer? = null
@@ -131,6 +131,7 @@ class EqualizerView(context: Context) : View(context) {
     }
 
     override fun onDraw(canvas: Canvas) {
+        paint.color = orange
         val w = 3f * d
         val gap = 4f * d
         val h = height.toFloat()

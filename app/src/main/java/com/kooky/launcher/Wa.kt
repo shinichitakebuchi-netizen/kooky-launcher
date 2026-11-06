@@ -14,6 +14,25 @@ object Wa {
     val KARAKURENAI = Color.parseColor("#C91F37") // 韓紅花：注意（残りわずか）
     val UKON = Color.parseColor("#E69B3A")        // 鬱金色：雷
 
+    // 差し色（強調の色）。設定の「差し色」で18色から選べる。初期値は紅緋
+    const val KEY_ACCENT = "accent_color"   // 保存値：Wa.PICK の番号 0〜17
+    const val DEFAULT_ACCENT = 3            // 紅緋
+    var accent: Int = BENIHI
+        private set
+    var accentIndex: Int = DEFAULT_ACCENT
+        private set
+
+    fun setAccent(i: Int) {
+        accentIndex = i.coerceIn(0, PICK.size - 1)
+        accent = PICK[accentIndex]
+    }
+
+    // 保存してある差し色を読む（壁紙の更新など、画面がないときにも使う）
+    fun loadAccent(ctx: android.content.Context) {
+        setAccent(ctx.getSharedPreferences("usage", android.content.Context.MODE_PRIVATE)
+            .getInt(KEY_ACCENT, DEFAULT_ACCENT))
+    }
+
     // ライト時は同じ色を入れ替えて使う（背景 鳥の子／文字 藍／補足・線 利休鼠）
     fun bg(light: Boolean) = if (light) TORINOKO else AI
     fun ink(light: Boolean) = if (light) AI else TORINOKO
