@@ -4,7 +4,9 @@ import android.graphics.Color
 
 // 日本の伝統色（縁アプリと共通）。ここにある色以外は使わない
 object Wa {
-    val AI = Color.parseColor("#264348")          // 藍色：背景
+    val SUMI = Color.parseColor("#313131")        // 墨：ダークの背景
+    val SHIRONERI = Color.parseColor("#F3F3F2")   // 白練：ライトの背景
+    val AI = Color.parseColor("#264348")          // 藍色：ライトの文字
     val TORINOKO = Color.parseColor("#E2BE9F")    // 鳥の子色：文字（主）
     val KAMENOZOKI = Color.parseColor("#C6C2B6")  // 甕覗
     val KAMENOZOKI70 = Color.parseColor("#B3C6C2B6") // 甕覗 70%：文字（補足）
@@ -33,8 +35,8 @@ object Wa {
             .getInt(KEY_ACCENT, DEFAULT_ACCENT))
     }
 
-    // ライト時は同じ色を入れ替えて使う（背景 鳥の子／文字 藍／補足・線 利休鼠）
-    fun bg(light: Boolean) = if (light) TORINOKO else AI
+    // 背景：ダークは墨、ライトは白練。文字：ダークは鳥の子、ライトは藍。補足・線は利休鼠
+    fun bg(light: Boolean) = if (light) SHIRONERI else SUMI
     fun ink(light: Boolean) = if (light) AI else TORINOKO
     fun sub(light: Boolean) = if (light) RIKYU else KAMENOZOKI70
     fun line(light: Boolean) = RIKYU

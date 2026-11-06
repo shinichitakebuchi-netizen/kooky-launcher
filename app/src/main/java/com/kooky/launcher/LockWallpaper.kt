@@ -65,7 +65,7 @@ object LockWallpaper {
         val w = minOf(dm.widthPixels, dm.heightPixels).coerceAtLeast(720)
         val h = maxOf(dm.widthPixels, dm.heightPixels).coerceAtLeast(1280)
 
-        val bg = Wa.bg(light)          // 藍色（ライトは鳥の子色）
+        val bg = Wa.bg(light)          // 墨（ライトは白練）
         val future = Wa.ink(light)     // これからの日：鳥の子色（ライトは藍色）
         val past = Wa.line(light)      // 過ぎた日：利休鼠
         Wa.loadAccent(ctx)

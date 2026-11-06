@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- ダイアログ：鳥の子の地（ライト）に利休鼠の細い枠（影・大きな角丸なし） -->
+<!-- ダイアログ：白練の地（ライト）に利休鼠の細い枠（影・大きな角丸なし） -->
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
     android:insetLeft="20dp" android:insetRight="20dp"
     android:insetTop="20dp" android:insetBottom="20dp">
     <shape android:shape="rectangle">
-        <solid android:color="#E2BE9F" />
+        <solid android:color="#F3F3F2" />
         <stroke android:width="1dp" android:color="#656255" />
         <corners android:radius="2dp" />
     </shape>

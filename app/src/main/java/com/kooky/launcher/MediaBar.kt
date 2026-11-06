@@ -95,7 +95,7 @@ class MediaBar(context: Context) : FrameLayout(context) {
         addView(col, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_VERTICAL))
 
         pill.apply {
-            textSize = 12f; setTypeface(typeface, Typeface.BOLD); setTextColor(Wa.AI)
+            textSize = 12f; setTypeface(typeface, Typeface.BOLD); setTextColor(Wa.bg(lightMode))
             setPadding(dp(10), dp(4), dp(10), dp(4)); visibility = GONE
             background = GradientDrawable().apply { cornerRadius = dp(20).toFloat(); setColor(orange) }
         }
@@ -114,6 +114,7 @@ class MediaBar(context: Context) : FrameLayout(context) {
     fun restyle() {
         appText.setTextColor(orange)
         pill.background = GradientDrawable().apply { cornerRadius = dp(20).toFloat(); setColor(orange) }
+        pill.setTextColor(Wa.bg(lightMode))
         titleText.setTextColor(ink)
         posText.setTextColor(sub); lenText.setTextColor(sub)
         rw.color = ink; ff.color = ink; pp.color = orange

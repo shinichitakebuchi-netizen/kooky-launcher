@@ -1366,7 +1366,7 @@ class MainActivity : Activity() {
     }
 
     // ===== 設定（藍・鳥の子・紅緋の全画面。縁アプリと同じ配色・デザイン） =====
-    private val SUMI = Wa.AI              // 背景：藍色
+    private val SUMI = Wa.SUMI            // 背景：墨
     private val KINARI = Wa.TORINOKO      // 文字：鳥の子色
     private val USUZUMI = Wa.KAMENOZOKI70 // 補足：甕覗 70%
     private val SUMI_LINE = Wa.RIKYU      // 罫線：利休鼠
