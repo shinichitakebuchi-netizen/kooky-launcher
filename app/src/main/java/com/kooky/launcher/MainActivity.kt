@@ -398,12 +398,9 @@ class MainActivity : Activity() {
             clipToPadding = false
             verticalSpacing = dp(16)
             adapter = appAdapter
-            setOnItemClickListener { _, _, position, _ ->
-                launchApp(shown[position].packageName)
-            }
-            setOnItemLongClickListener { _, _, position, _ ->
-                showAppMenu(shown[position]); true
-            }
+            // タップはアプリの四角の中だけで反応させる（AppAdapter の icon に付けている）
+            // 枠の外やアプリ名を押しても反応しないよう、マス全体の押した表示も消す
+            selector = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
         }
 
         contentLayout = LinearLayout(this).apply {
@@ -2315,6 +2312,18 @@ class MainActivity : Activity() {
             val icon = ImageView(this@MainActivity).apply {
                 setImageDrawable(iconDrawable)
                 layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
+                contentDescription = displayName(app)
+                // 四角の中だけが押せる場所
+                setOnClickListener { launchApp(app.packageName) }
+                setOnLongClickListener { showAppMenu(app); true }
+                // 押している間だけ少し薄くする
+                setOnTouchListener { v, e ->
+                    when (e.actionMasked) {
+                        android.view.MotionEvent.ACTION_DOWN -> v.alpha = 0.6f
+                        android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> v.alpha = 1f
+                    }
+                    false
+                }
             }
             cell.addView(icon)
             val label = TextView(this@MainActivity).apply {
