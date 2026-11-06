@@ -146,6 +146,9 @@ class MainActivity : Activity() {
     private var showLabels = true
     private var useDesignIcon = true
     private var showInitial = true
+    // 伝統文様（Pattern.kt）：0=なし / 1〜6。入れ方 0=薄く敷く / 1=角だけ / 2=枠を文様に
+    private var patternType = 0
+    private var patternStyle = 0
 
     private val readingMap = mapOf(
         "あはも" to "ahamo",
@@ -242,6 +245,8 @@ class MainActivity : Activity() {
         showLabels = prefs.getBoolean("show_labels", true)
         useDesignIcon = prefs.getBoolean("use_design_icon", true)
         showInitial = prefs.getBoolean("show_initial", true)
+        patternType = prefs.getInt("pattern", 0).coerceIn(0, Pattern.NAMES.size - 1)
+        patternStyle = prefs.getInt("pattern_style", 0).coerceIn(0, Pattern.STYLES.size - 1)
         themeMode = prefs.getInt("theme_mode", 0)
         Wa.loadAccent(this)
         fontIndex = prefs.getInt("font", 0).coerceIn(0, AppFonts.names.size - 1)
@@ -1289,7 +1294,11 @@ class MainActivity : Activity() {
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE; color = textColor; strokeWidth = 1.3f * resources.displayMetrics.density
         }
-        // ハンバーガーマーク（横線3本）
+        // 文様を選んでいるときは、その文様の印。なしのときはハンバーガーマーク（横線3本）
+        if (patternType > 0) {
+            Pattern.drawGlyph(canvas, patternType, size.toFloat(), orange, textColor, 1.3f * resources.displayMetrics.density)
+            return BitmapDrawable(resources, bmp)
+        }
         p.strokeCap = Paint.Cap.ROUND
         val l = dp(3).toFloat(); val r = size - dp(3).toFloat()
         for (y in listOf(dp(6), dp(12), dp(18))) {
@@ -1559,6 +1568,66 @@ class MainActivity : Activity() {
         }
         col.addView(View(this), LinearLayout.LayoutParams(1, dp(10)))
         note("見出し・ゲージ・電池の輪・ロック画面の今日の○などの色です。アイコンの色は変わりません。")
+
+        // ── 文様 ──
+        section("文様")
+        col.addView(View(this), LinearLayout.LayoutParams(1, dp(14)))
+        for (r in 0 until 2) {
+            val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            for (c in 0 until 4) {
+                val i = r * 4 + c
+                if (i >= Pattern.NAMES.size) {
+                    line.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f)); continue
+                }
+                val sel = i == patternType
+                val cell = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    setPadding(0, dp(6), 0, dp(6))
+                    isClickable = true
+                    contentDescription = Pattern.NAMES[i]
+                    setOnClickListener {
+                        if (i != patternType) {
+                            patternType = i; prefs.edit().putInt("pattern", i).apply()
+                            applyTheme(); renderSettings()
+                        }
+                    }
+                }
+                // 見本：選んでいる入れ方で、その文様を描いた四角
+                val sz = dp(48)
+                val bmp = Bitmap.createBitmap(sz, sz, Bitmap.Config.ARGB_8888)
+                val cv = Canvas(bmp)
+                val ins = dp(2).toFloat()
+                val pen = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(1).toFloat(); color = KINARI }
+                if (i > 0) Pattern.drawInIcon(cv, i, patternStyle, sz.toFloat(), ins, dp(2).toFloat(),
+                    when (patternStyle) { 1 -> Wa.KAMENOZOKI; 2 -> KINARI; else -> Wa.RIKYU },
+                    SUMI, (if (patternStyle == 2) 0.7f else 0.6f) * resources.displayMetrics.density)
+                if (i == 0 || patternStyle != 2) cv.drawRoundRect(ins, ins, sz - ins, sz - ins, dp(2).toFloat(), dp(2).toFloat(), pen)
+                cell.addView(ImageView(this).apply {
+                    setImageBitmap(bmp)
+                    setPadding(dp(3), dp(3), dp(3), dp(3))
+                    // 選択中は鳥の子色の細い枠
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(2).toFloat(); setColor(Color.TRANSPARENT)
+                        if (sel) setStroke(dp(1), KINARI)
+                    }
+                }, LinearLayout.LayoutParams(dp(56), dp(56)))
+                cell.addView(TextView(this).apply {
+                    text = Pattern.NAMES[i]; textSize = 11f
+                    setTextColor(if (sel) KINARI else USUZUMI)
+                    gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0)
+                })
+                line.addView(cell, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            }
+            col.addView(line)
+        }
+        label("入れ方")
+        choices(Pattern.STYLES, patternStyle) {
+            patternStyle = it; prefs.edit().putInt("pattern_style", it).apply()
+            applyTheme(); renderSettings()
+        }
+        col.addView(View(this), LinearLayout.LayoutParams(1, dp(10)))
+        note("アプリの四角と、検索バーの右にある設定の印に使います。設定の印は、なしのときは三本線です。")
 
         // ── 文字 ──
         section("文字")
@@ -2232,12 +2301,17 @@ class MainActivity : Activity() {
         val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
         val pad = dp(5)
-        base.setBounds(pad, pad, size - pad, size - pad); base.draw(canvas)
-        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; this.color = color; strokeWidth = dp(1).toFloat()
-        }
         val i = dp(2).toFloat()
-        canvas.drawRoundRect(i, i, size - i, size - i, dp(cornerR).toFloat(), dp(cornerR).toFloat(), p)
+        val waku = patternType > 0 && patternStyle == 2
+        if (patternType > 0 && !waku) drawIconPattern(canvas, size, color)   // 文様はアイコンの後ろに
+        base.setBounds(pad, pad, size - pad, size - pad); base.draw(canvas)
+        if (waku) drawIconPattern(canvas, size, color)
+        else {
+            val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE; this.color = color; strokeWidth = dp(1).toFloat()
+            }
+            canvas.drawRoundRect(i, i, size - i, size - i, dp(cornerR).toFloat(), dp(cornerR).toFloat(), p)
+        }
         if (withNotif) drawDot(canvas, size)
         return BitmapDrawable(resources, bmp)
     }
@@ -2259,11 +2333,16 @@ class MainActivity : Activity() {
         val radius = dp(cornerR).toFloat()
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = iconFill }
         canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, fill)
-        val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; color = favColorOf(app.packageName) ?: textColor
-            strokeWidth = dp(1).toFloat()
+        val frameColor = favColorOf(app.packageName) ?: textColor
+        if (patternType > 0) drawIconPattern(canvas, size, frameColor)
+        // 「枠を文様に」のときは、細い線の枠の代わりに文様の帯
+        if (patternType == 0 || patternStyle != 2) {
+            val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE; color = frameColor
+                strokeWidth = dp(1).toFloat()
+            }
+            canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, border)
         }
-        canvas.drawRoundRect(inset, inset, size - inset, size - inset, radius, radius, border)
         if (showInitial) {
             val ch = firstChar(displayName(app))
             if (ch.isNotEmpty()) {
@@ -2277,6 +2356,21 @@ class MainActivity : Activity() {
         }
         if (withNotif) drawDot(canvas, size)
         return BitmapDrawable(resources, bmp)
+    }
+
+    // アプリの四角に文様を入れる。frameColor は「枠を文様に」のときの色（お気に入りの色など）
+    private fun drawIconPattern(canvas: Canvas, size: Int, frameColor: Int,
+                                type: Int = patternType, style: Int = patternStyle) {
+        if (type <= 0) return
+        val d = resources.displayMetrics.density
+        val color = when (style) {
+            1 -> if (isLight) Wa.RIKYU else Wa.KAMENOZOKI   // 角だけ：甕覗（白練の地では利休鼠）
+            2 -> frameColor                                   // 枠を文様に：枠と同じ色
+            else -> Wa.RIKYU                                  // 薄く敷く：利休鼠
+        }
+        val sw = (if (style == 2) 0.7f else 0.6f) * d
+        Pattern.drawInIcon(canvas, type, style, size.toFloat(), dp(2).toFloat(), dp(cornerR).toFloat(),
+            color, iconFill, sw)
     }
 
     private fun firstChar(name: String): String {
