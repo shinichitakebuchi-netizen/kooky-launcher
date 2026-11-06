@@ -71,7 +71,7 @@ class MediaBar(context: Context) : FrameLayout(context) {
         val row2 = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         track.addView(fill, LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT))
         row2.addView(posText)
-        row2.addView(track, LinearLayout.LayoutParams(0, dp(3), 1f).apply { leftMargin = dp(8); rightMargin = dp(8) })
+        row2.addView(track, LinearLayout.LayoutParams(0, dp(1), 1f).apply { leftMargin = dp(8); rightMargin = dp(8) })
         row2.addView(lenText)
         col.addView(row2, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
 
@@ -118,8 +118,9 @@ class MediaBar(context: Context) : FrameLayout(context) {
         posText.setTextColor(sub); lenText.setTextColor(sub)
         rw.color = ink; ff.color = ink; pp.color = orange
         prev.color = ink; next.color = ink
-        track.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(trackColor) }
-        fill.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(orange) }
+        // 再生位置の線：通信量のゲージと同じ 1dp の一本線（角丸なし）
+        track.background = android.graphics.drawable.ColorDrawable(trackColor)
+        fill.background = android.graphics.drawable.ColorDrawable(orange)
     }
 
     // ===== 再生セッションの監視 =====

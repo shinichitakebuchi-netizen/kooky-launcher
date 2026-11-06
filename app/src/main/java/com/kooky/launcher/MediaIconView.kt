@@ -38,7 +38,8 @@ class MediaIconView(context: Context, private val kind: Kind) : View(context) {
         canvas.translate(ox, oy)
         canvas.scale(s, s)
         paint.color = color
-        paint.strokeWidth = 1.9f
+        // 線の太さはアイコンの大きさに関係なく 1.3dp（インジケーターのWi-Fiと同じ細さ）
+        paint.strokeWidth = 1.3f * resources.displayMetrics.density / s
         path.reset()
         when (kind) {
             Kind.PREV -> {

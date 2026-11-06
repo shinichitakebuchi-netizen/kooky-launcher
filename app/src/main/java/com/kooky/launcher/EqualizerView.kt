@@ -132,12 +132,13 @@ class EqualizerView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         paint.color = orange
-        val w = 3f * d
-        val gap = 4f * d
+        // 細い線（1.5dp）。全体の幅は前と同じ 31dp に収める
+        val w = 1.5f * d
+        val gap = (31f * d - w * bands) / (bands - 1)
         val h = height.toFloat()
         var x = 0f
         for (b in 0 until bands) {
-            val bh = max(3f * d, h * level[b])
+            val bh = max(w, h * level[b])
             canvas.drawRoundRect(RectF(x, h - bh, x + w, h), w / 2f, w / 2f, paint)
             x += w + gap
         }
