@@ -35,6 +35,10 @@ class NotificationService : NotificationListenerService() {
         )
         // 変化をMainActivityに知らせるためのコールバック
         var onChange: (() -> Unit)? = null
+        // 新しい通知が届いたとき（四季のカラクリ用）
+        var onArrive: (() -> Unit)? = null
+        // 通知ごとの最後に届いた時刻（同じ通知の中身だけの更新を見分ける）
+        private val lastPost = HashMap<String, Long>()
     }
 
     override fun onListenerConnected() {
@@ -44,9 +48,36 @@ class NotificationService : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         refresh()
+        if (sbn == null) return
+        // 掲示板に流すような通知で、新しく届いたもの（または鳴らし直しのある更新）だけ
+        val n = sbn.notification ?: return
+        if (!isShown(sbn)) return
+        val prev = lastPost[sbn.key]
+        lastPost[sbn.key] = sbn.postTime
+        val alertOnce = n.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0
+        if (prev == null || (prev != sbn.postTime && !alertOnce)) onArrive?.invoke()
+    }
+
+    // 掲示板に流す通知かどうか（refresh と同じ条件）
+    private fun isShown(sbn: StatusBarNotification): Boolean {
+        if (sbn.packageName == packageName) return false
+        if (sbn.isOngoing) return false
+        if (sbn.packageName in blockedPkgs) return false
+        if (packageManager.getLaunchIntentForPackage(sbn.packageName) == null) return false
+        val n = sbn.notification ?: return false
+        if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) return false
+        if (n.flags and Notification.FLAG_FOREGROUND_SERVICE != 0) return false
+        if (n.category != null && n.category in blockedCategories) return false
+        val ex = n.extras ?: return false
+        if ((ex.getString(Notification.EXTRA_TEMPLATE) ?: "").contains("MediaStyle")) return false
+        val title = ex.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim() ?: ""
+        val text = (ex.getCharSequence(Notification.EXTRA_TEXT) ?: ex.getCharSequence(Notification.EXTRA_BIG_TEXT))
+            ?.toString()?.trim() ?: ""
+        return title.isNotEmpty() || text.isNotEmpty()
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
+        sbn?.key?.let { lastPost.remove(it) }
         refresh()
     }
 

@@ -198,38 +198,17 @@ class MainActivity : Activity() {
     private val secFormat = SimpleDateFormat("ss", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("yyyy.MM.dd-EEE", Locale.JAPANESE)
     private var lastThemeMinute = -1L
-    private var lastSeasonMinute = -1L
 
-    // ===== 四季のカラクリ =====
+    // ===== 四季のカラクリ（天気の長押し・新しい通知のとき） =====
     private lateinit var seasonView: SeasonView
-    private var seasonAuto = true   // 1日3回、ランダムな時刻に舞わせる
+    private var seasonOnNotif = true   // 新しい通知が届いたら舞わせる
+    private var homeShown = false      // ホームが前に出ているか
+    private var seasonPending = false  // ホームを見ていない間に通知が届いた
 
-    // 今日の3回の時刻（8:00〜22:00、1時間以上あける）を決めて、過ぎていてまだなら1回舞わせる
-    private fun checkSeasonTime(now: Date) {
-        if (!seasonAuto || !::seasonView.isInitialized || seasonView.isPlaying()) return
-        val cal = Calendar.getInstance().apply { time = now }
-        val day = cal.get(Calendar.YEAR) * 1000 + cal.get(Calendar.DAY_OF_YEAR)
-        if (prefs.getInt("season_day", 0) != day) {
-            val r = java.util.Random()
-            var picks: List<Int>
-            do {
-                picks = List(3) { 8 * 60 + r.nextInt(14 * 60) }.sorted()
-            } while (picks[1] - picks[0] < 60 || picks[2] - picks[1] < 60)
-            prefs.edit().putInt("season_day", day).putString("season_times", picks.joinToString(","))
-                .putInt("season_done", 0).apply()
-        }
-        val times = (prefs.getString("season_times", "") ?: "").split(",").mapNotNull { it.toIntOrNull() }
-        var done = prefs.getInt("season_done", 0)
-        val m = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
-        var due = false
-        times.forEachIndexed { i, tm ->
-            // ホームを見ていなかった間に過ぎた分は、次にホームを開いたときにまとめて1回
-            if (m >= tm && done and (1 shl i) == 0) { done = done or (1 shl i); due = true }
-        }
-        if (due) {
-            prefs.edit().putInt("season_done", done).apply()
-            seasonView.play()
-        }
+    private fun onNotifArrive() {
+        if (!seasonOnNotif || !::seasonView.isInitialized) return
+        if (homeShown) { if (!seasonView.isPlaying()) seasonView.play() }
+        else seasonPending = true   // 次にホームを開いたときに1回だけ
     }
     private val tick = object : Runnable {
         override fun run() {
@@ -241,7 +220,6 @@ class MainActivity : Activity() {
             sp.setSpan(RelativeSizeSpan(0.6f), hm.length + 1, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             clockText.text = sp
             dateText.text = dateFormat.format(now)
-            if (now.time / 60000 != lastSeasonMinute) { lastSeasonMinute = now.time / 60000; checkSeasonTime(now) }
             // 移ろい：分が変わったときに日の出・日の入りを過ぎたか確かめて、色を切り替える
             if (themeMode == 2 && now.time / 60000 != lastThemeMinute) {
                 lastThemeMinute = now.time / 60000
@@ -290,6 +268,7 @@ class MainActivity : Activity() {
 
         loadApps()
 
+        NotificationService.onArrive = { runOnUiThread { onNotifArrive() } }
         NotificationService.onChange = {
             runOnUiThread {
                 appAdapter.notifyDataSetChanged()
@@ -471,7 +450,7 @@ class MainActivity : Activity() {
         }
         arrangeLayout()
 
-        seasonAuto = prefs.getBoolean("season_auto", true)
+        seasonOnNotif = prefs.getBoolean("season_notif", true)
         seasonView = SeasonView(this)
         rootFrame = FrameLayout(this).apply {
             addView(contentLayout, FrameLayout.LayoutParams(
@@ -999,6 +978,11 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        homeShown = true
+        if (seasonPending && seasonOnNotif && ::seasonView.isInitialized) {
+            seasonPending = false
+            timeHandler.postDelayed({ if (homeShown) seasonView.play() }, 500)
+        }
         hideSystemBars()
         if (computeLight() != isLight) applyTheme()
         thread { LockWallpaper.update(this) }
@@ -1029,6 +1013,7 @@ class MainActivity : Activity() {
         timeHandler.removeCallbacks(tick)
         timeHandler.removeCallbacks(weatherTick)
         timeHandler.removeCallbacks(chargeTick)
+        homeShown = false
         if (::seasonView.isInitialized) seasonView.stop()
         timeHandler.removeCallbacks(statsTick)
         ticker.stop()
@@ -1560,10 +1545,12 @@ class MainActivity : Activity() {
             showInitial = it; prefs.edit().putBoolean("show_initial", it).apply()
             appAdapter.notifyDataSetChanged(); renderSettings()
         }
-        toggle("四季のカラクリ（1日3回）", seasonAuto) {
-            seasonAuto = it; prefs.edit().putBoolean("season_auto", it).apply(); renderSettings()
+        toggle("通知で四季が舞う", seasonOnNotif) {
+            seasonOnNotif = it; prefs.edit().putBoolean("season_notif", it).apply()
+            if (!it) seasonPending = false
+            renderSettings()
         }
-        note("春は桜、夏は蛍、秋は紅葉、冬は六花が舞います。天気を長押ししても舞います。")
+        note("新しい通知が届くと、春は桜、夏は蛍、秋は紅葉、冬は六花が舞います。ホームを見ていないときに届いたら、次にホームを開いたときに1回。天気を長押ししても舞います。")
         label("アイコン")
         choices(listOf("オリジナル", "シンプル"), if (useDesignIcon) 0 else 1) {
             useDesignIcon = it == 0; prefs.edit().putBoolean("use_design_icon", useDesignIcon).apply()
