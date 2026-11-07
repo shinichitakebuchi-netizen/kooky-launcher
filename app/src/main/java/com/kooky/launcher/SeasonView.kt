@@ -41,7 +41,8 @@ class SeasonView(context: Context) : View(context) {
     init {
         isClickable = false
         isFocusable = false
-        visibility = GONE
+        // GONE だと大きさが決まらず舞えないので、見えないだけの INVISIBLE にしておく
+        visibility = INVISIBLE
     }
 
     // 0=春 1=夏 2=秋 3=冬（3〜5月・6〜8月・9〜11月・12〜2月）
@@ -55,7 +56,7 @@ class SeasonView(context: Context) : View(context) {
     fun isPlaying() = visibility == VISIBLE
 
     fun play(s: Int = seasonNow()) {
-        if (width == 0 || height == 0) { post { play(s) }; return }
+        if (width == 0 || height == 0) return
         season = s
         val w = width.toFloat(); val h = height.toFloat()
         val r = Random(SystemClock.uptimeMillis())
@@ -80,7 +81,7 @@ class SeasonView(context: Context) : View(context) {
     }
 
     fun stop() {
-        visibility = GONE
+        visibility = INVISIBLE
         parts = emptyList()
     }
 

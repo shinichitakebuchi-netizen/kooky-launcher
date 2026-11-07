@@ -310,7 +310,10 @@ class MainActivity : Activity() {
             }
             // 長押し：四季のカラクリ（春は桜・夏は蛍・秋は紅葉・冬は六花）
             override fun onLongPress(e: MotionEvent) {
-                if (::seasonView.isInitialized) seasonView.play()
+                if (::seasonView.isInitialized) {
+                    weatherView.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                    seasonView.play()
+                }
             }
         })
         weatherView = WeatherView(this).apply {
