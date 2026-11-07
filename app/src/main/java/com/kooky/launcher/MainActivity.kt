@@ -1411,8 +1411,19 @@ class MainActivity : Activity() {
     private val SHU get() = Wa.accent     // 見出し：差し色（初期値は紅緋）
     private var settingsDialog: android.app.Dialog? = null
     private var settingsCol: LinearLayout? = null
+    private var settingsScroll: ScrollView? = null
+    // 設定の階層：-1=一覧 / 0〜7=各ページ
+    private var settingsPage = -1
+    private val SETTING_PAGES = listOf("表示", "色合い", "文様", "文字", "四季", "通信量", "ロック画面", "控え")
+
+    private fun openSettingsPage(p: Int) {
+        settingsPage = p
+        renderSettings()
+        settingsScroll?.scrollTo(0, 0)
+    }
 
     private fun showSettingsMenu() {
+        settingsPage = -1
         if (settingsDialog?.isShowing == true) { renderSettings(); return }
         val d = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         val col = LinearLayout(this).apply {
@@ -1430,9 +1441,17 @@ class MainActivity : Activity() {
             d.window?.statusBarColor = SUMI
             d.window?.navigationBarColor = SUMI
         } catch (e: Exception) {}
-        d.setOnDismissListener { settingsDialog = null; settingsCol = null; hideSystemBars() }
+        d.setOnDismissListener { settingsDialog = null; settingsCol = null; settingsScroll = null; hideSystemBars() }
+        // 戻るボタン：ページの中なら一覧へ、一覧なら閉じる
+        d.setOnKeyListener { _, code, ev ->
+            if (code == android.view.KeyEvent.KEYCODE_BACK && settingsPage >= 0) {
+                if (ev.action == android.view.KeyEvent.ACTION_UP) openSettingsPage(-1)
+                true
+            } else false
+        }
         settingsDialog = d
         settingsCol = col
+        settingsScroll = scroll
         renderSettings()
         d.show()
     }
@@ -1518,23 +1537,86 @@ class MainActivity : Activity() {
             col.addView(row)
         }
 
-        // ── 表題 ──
-        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM }
-        head.addView(TextView(this).apply { text = "庵"; setTextColor(KINARI); textSize = 44f; typeface = serifBold })
-        head.addView(TextView(this).apply {
-            text = "いおり"; setTextColor(USUZUMI); textSize = 13f; letterSpacing = 0.23f
-            setPadding(dp(12), 0, 0, dp(10))
+        // 一覧の1行：名前・今の設定・›
+        fun menuRow(i: Int, summary: String) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(16), 0, dp(16))
+                isClickable = true
+                setOnClickListener { openSettingsPage(i) }
+            }
+            val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            texts.addView(TextView(this).apply { text = SETTING_PAGES[i]; setTextColor(KINARI); textSize = 15f })
+            texts.addView(TextView(this).apply {
+                text = summary; setTextColor(USUZUMI); textSize = 12f; setPadding(0, dp(4), 0, 0)
+            })
+            row.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(TextView(this).apply { text = "›"; setTextColor(USUZUMI); textSize = 20f })
+            col.addView(row)
+            col.addView(rule(thin = true))
+        }
+
+        if (settingsPage < 0) {
+            // ── 表題 ──
+            val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM }
+            head.addView(TextView(this).apply { text = "庵"; setTextColor(KINARI); textSize = 44f; typeface = serifBold })
+            head.addView(TextView(this).apply {
+                text = "いおり"; setTextColor(USUZUMI); textSize = 13f; letterSpacing = 0.23f
+                setPadding(dp(12), 0, 0, dp(10))
+            })
+            head.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+            head.addView(TextView(this).apply {
+                text = "閉じる"; setTextColor(USUZUMI); textSize = 13f; letterSpacing = 0.15f
+                setPadding(dp(12), dp(8), 0, dp(10)); isClickable = true
+                setOnClickListener { settingsDialog?.dismiss() }
+            })
+            col.addView(head)
+            col.addView(View(this), LinearLayout.LayoutParams(1, dp(10)))
+            note("ホームの見た目と動きを整えます。変えた内容はすぐにホームに反映されます。")
+
+            // ── 一覧 ──
+            section("設定")
+            menuRow(0, listOf(if (showLabels) "アプリ名" else "アプリ名なし", if (showInitial) "頭文字" else "頭文字なし",
+                if (useDesignIcon) "オリジナル" else "シンプル").joinToString("・"))
+            menuRow(1, ThemeClock.NAMES.getOrElse(themeMode) { "" } + "・差し色 " + Wa.PICK_NAMES[Wa.accentIndex])
+            menuRow(2, if (patternType == 0) "なし" else Pattern.NAMES[patternType] + "・" + Pattern.STYLES[patternStyle])
+            menuRow(3, AppFonts.names[fontIndex])
+            menuRow(4, if (seasonOnNotif) "通知で舞う" else "長押しのときだけ")
+            menuRow(5, "締め日 ${closeDayLabel()}・上限 ${dataLimitGb()}GB")
+            menuRow(6, if (LockWallpaper.isOn(this)) "1年の○を壁紙に" else "使わない")
+            menuRow(7, "書き出す・読み込む")
+
+            // ── 更新 ──
+            val ver = try { packageManager.getPackageInfo(packageName, 0).versionName ?: "" } catch (e: Exception) { "" }
+            col.addView(TextView(this).apply {
+                text = "更新する　v$ver"; setTextColor(USUZUMI); textSize = 13f; letterSpacing = 0.15f
+                gravity = Gravity.CENTER
+                setPadding(dp(16), dp(12), dp(16), dp(12)); isClickable = true
+                setOnClickListener { settingsDialog?.dismiss(); openUpdatePage() }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(56)
+            })
+            applyFont(col)
+            return
+        }
+
+        // ── ページの上：‹ 設定（戻る）・閉じる ──
+        val nav = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        nav.addView(TextView(this).apply {
+            text = "‹　設定"; setTextColor(USUZUMI); textSize = 14f; letterSpacing = 0.15f
+            setPadding(0, dp(8), dp(16), dp(8)); isClickable = true
+            setOnClickListener { openSettingsPage(-1) }
         })
-        head.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
-        head.addView(TextView(this).apply {
+        nav.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        nav.addView(TextView(this).apply {
             text = "閉じる"; setTextColor(USUZUMI); textSize = 13f; letterSpacing = 0.15f
-            setPadding(dp(12), dp(8), 0, dp(10)); isClickable = true
+            setPadding(dp(16), dp(8), 0, dp(8)); isClickable = true
             setOnClickListener { settingsDialog?.dismiss() }
         })
-        col.addView(head)
-        col.addView(View(this), LinearLayout.LayoutParams(1, dp(10)))
-        note("ホームの見た目と動きを整えます。変えた内容はすぐにホームに反映されます。")
+        col.addView(nav)
 
+        if (settingsPage == 0) {
         // ── 表示 ──
         section("表示")
         toggle("アプリ名", showLabels) {
@@ -1545,18 +1627,14 @@ class MainActivity : Activity() {
             showInitial = it; prefs.edit().putBoolean("show_initial", it).apply()
             appAdapter.notifyDataSetChanged(); renderSettings()
         }
-        toggle("通知で四季が舞う", seasonOnNotif) {
-            seasonOnNotif = it; prefs.edit().putBoolean("season_notif", it).apply()
-            if (!it) seasonPending = false
-            renderSettings()
-        }
-        note("新しい通知が届くと、春は桜、夏は蛍、秋は紅葉、冬は六花が舞います。ホームを見ていないときに届いたら、次にホームを開いたときに1回。天気を長押ししても舞います。")
         label("アイコン")
         choices(listOf("オリジナル", "シンプル"), if (useDesignIcon) 0 else 1) {
             useDesignIcon = it == 0; prefs.edit().putBoolean("use_design_icon", useDesignIcon).apply()
             appAdapter.notifyDataSetChanged(); renderSettings()
         }
 
+        }
+        if (settingsPage == 1) {
         // ── 色合い ──
         section("色合い")
         col.addView(View(this), LinearLayout.LayoutParams(1, dp(14)))
@@ -1608,6 +1686,8 @@ class MainActivity : Activity() {
         col.addView(View(this), LinearLayout.LayoutParams(1, dp(10)))
         note("見出し・ゲージ・電池の輪・ロック画面の今日の○などの色です。アイコンの色は変わりません。")
 
+        }
+        if (settingsPage == 2) {
         // ── 文様 ──
         section("文様")
         col.addView(View(this), LinearLayout.LayoutParams(1, dp(14)))
@@ -1668,6 +1748,8 @@ class MainActivity : Activity() {
         col.addView(View(this), LinearLayout.LayoutParams(1, dp(10)))
         note("アプリの四角と、検索バーの右にある設定の印に使います。設定の印は、なしのときは三本線です。")
 
+        }
+        if (settingsPage == 3) {
         // ── 文字 ──
         section("文字")
         col.addView(View(this), LinearLayout.LayoutParams(1, dp(14)))
@@ -1699,11 +1781,25 @@ class MainActivity : Activity() {
         col.addView(View(this), LinearLayout.LayoutParams(1, dp(10)))
         note("Kaisei Tokumin・Yuji Syuku は SIL Open Font License 1.1 の無料フォントです。")
 
+        }
+        if (settingsPage == 4) {
+        // ── 四季 ──
+        section("四季のカラクリ")
+        toggle("通知で四季が舞う", seasonOnNotif) {
+            seasonOnNotif = it; prefs.edit().putBoolean("season_notif", it).apply()
+            if (!it) seasonPending = false
+            renderSettings()
+        }
+        note("新しい通知が届くと、春は桜、夏は蛍、秋は紅葉、冬は六花が舞います。ホームを見ていないときに届いたら、次にホームを開いたときに1回。天気を長押ししても舞います。")
+        }
+        if (settingsPage == 5) {
         // ── 通信量 ──
         section("通信量")
         valueRow("締め日", closeDayLabel()) { showDataSettings() }
         valueRow("月の上限", "${dataLimitGb()}GB") { showDataSettings() }
 
+        }
+        if (settingsPage == 6) {
         // ── ロック画面 ──
         section("ロック画面")
         toggle("1年の○を壁紙にする", LockWallpaper.isOn(this)) { on ->
@@ -1719,6 +1815,8 @@ class MainActivity : Activity() {
             }
         }
 
+        }
+        if (settingsPage == 7) {
         // ── 控え ──
         section("控え")
         col.addView(View(this), LinearLayout.LayoutParams(1, dp(14)))
@@ -1729,16 +1827,7 @@ class MainActivity : Activity() {
             if (it == 0) startExport() else startImport()
         }
 
-        // ── 更新 ──
-        val ver = try { packageManager.getPackageInfo(packageName, 0).versionName ?: "" } catch (e: Exception) { "" }
-        col.addView(TextView(this).apply {
-            text = "更新する　v$ver"; setTextColor(USUZUMI); textSize = 13f; letterSpacing = 0.15f
-            gravity = Gravity.CENTER
-            setPadding(dp(16), dp(12), dp(16), dp(12)); isClickable = true
-            setOnClickListener { settingsDialog?.dismiss(); openUpdatePage() }
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(56)
-        })
+        }
         applyFont(col)
     }
 
