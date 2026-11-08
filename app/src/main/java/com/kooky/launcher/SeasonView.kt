@@ -15,7 +15,7 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 // 四季のカラクリ：ホームの上に数秒だけ、季節のものを舞わせる（触っても下のホームに届く）
-// 春＝桜の花びら / 夏＝蛍 / 秋＝紅葉 / 冬＝六花（雪の結晶）
+// 春＝桜の花びら / 夏＝昼は水面の波紋・夜は蛍 / 秋＝紅葉 / 冬＝六花（雪の結晶）
 class SeasonView(context: Context) : View(context) {
 
     var lightMode = false
@@ -24,6 +24,7 @@ class SeasonView(context: Context) : View(context) {
                     val rot: Float, val vr: Float, val s: Float, val delay: Float, val alt: Boolean)
 
     private var season = -1
+    private var summerDay = false   // 夏の昼（日の出〜日の入り）は波紋、夜は蛍
     private var parts = emptyList<P>()
     private var start = 0L
     private var dur = 0f
@@ -62,6 +63,17 @@ class SeasonView(context: Context) : View(context) {
         val r = Random(SystemClock.uptimeMillis())
         fun rf(a: Float, b: Float) = a + r.nextFloat() * (b - a)
         if (s == 1) {
+            val now = Calendar.getInstance()
+            val (rise, set) = ThemeClock.sunTimes(context, now)
+            val m = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+            summerDay = m in rise until set
+        }
+        if (s == 1 && summerDay) {
+            // 水面の波紋：アプリのあたりに、輪が静かに広がる（0.9秒ずつずらして6か所）
+            dur = 9f
+            parts = List(6) { P(rf(40f * d, w - 40f * d), rf(h * 0.35f, h * 0.95f), 0f, 0f, 0f,
+                0f, 0f, 1f, it * 0.9f, false) }
+        } else if (s == 1) {
             // 蛍：画面の下半分あたりで、ふわっと灯っては消える
             dur = 9f
             parts = List(9) { P(rf(20f * d, w - 20f * d), rf(h * 0.40f, h * 0.92f), 0f, 0f, rf(0f, 6.3f),
@@ -92,7 +104,13 @@ class SeasonView(context: Context) : View(context) {
         val h = height.toFloat()
         // 終わりの1.5秒で全体をうすくして消す
         val endFade = min(1f, max(0f, (dur - t) / 1.5f))
-        if (season == 1) {
+        if (season == 1 && summerDay) {
+            for (p in parts) {
+                val tt = t - p.delay
+                if (tt < 0f || tt > 3.5f) continue
+                ripple(canvas, p.x, p.y, tt, endFade)
+            }
+        } else if (season == 1) {
             val inFade = min(1f, t / 2f)
             for (p in parts) {
                 val g = max(0f, sin(t * 1.3f + p.ph))
@@ -173,6 +191,18 @@ class SeasonView(context: Context) : View(context) {
             c.drawLine(bx, by, bx + cos(ang - 0.7f) * rr * 0.3f, by + sin(ang - 0.7f) * rr * 0.3f, line)
         }
         c.restore()
+    }
+
+    // 波紋：3本の輪が少しずつ遅れて広がり、うすくなって消える（墨は甕覗、白練は利休鼠）
+    private fun ripple(c: Canvas, x: Float, y: Float, tt: Float, fade: Float) {
+        line.color = if (lightMode) Wa.RIKYU else Wa.KAMENOZOKI
+        line.strokeWidth = 0.8f * d
+        for (k in 0 until 3) {
+            val r = (tt - k * 0.35f) * 22f * d
+            if (r <= 0f) continue
+            line.alpha = (max(0f, 0.6f - tt * 0.17f) * fade * 255).toInt()
+            c.drawOval(x - r, y - r * 0.35f, x + r, y + r * 0.35f, line)
+        }
     }
 
     // 蛍：墨のときは光のにじみ＋芯、白練のときは細い輪＋芯（どちらも鶸色）
