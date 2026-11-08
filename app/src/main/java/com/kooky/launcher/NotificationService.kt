@@ -18,8 +18,8 @@ class NotificationService : NotificationListenerService() {
     )
 
     companion object {
-        // 今通知が出ているアプリのパッケージ名の集合
-        val activePackages = mutableSetOf<String>()
+        // 今通知が出ているアプリのパッケージ名の集合（丸ごと差し替えるので、読む側で壊れない）
+        @Volatile var activePackages: Set<String> = emptySet()
         // 掲示板用：アプリごとの最新1件（新しい順）
         @Volatile var items: List<Item> = emptyList()
         // 掲示板に流さないシステム系のパッケージ
@@ -63,7 +63,7 @@ class NotificationService : NotificationListenerService() {
         if (sbn.packageName == packageName) return false
         if (sbn.isOngoing) return false
         if (sbn.packageName in blockedPkgs) return false
-        if (packageManager.getLaunchIntentForPackage(sbn.packageName) == null) return false
+        if (!launchable(sbn.packageName)) return false
         val n = sbn.notification ?: return false
         if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) return false
         if (n.flags and Notification.FLAG_FOREGROUND_SERVICE != 0) return false
@@ -81,13 +81,41 @@ class NotificationService : NotificationListenerService() {
         refresh()
     }
 
-    // 現在出ている通知を数え直して更新
+    // ===== 重い処理は別のスレッドで（画面の動きを止めない） =====
+    private val worker = android.os.HandlerThread("notif").apply { start() }
+    private val bg = android.os.Handler(worker.looper)
+    // アプリ名・起動できるかは、毎回調べずに覚えておく
+    private val labelCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val launchCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+
+    private fun launchable(pkg: String): Boolean = launchCache.getOrPut(pkg) {
+        packageManager.getLaunchIntentForPackage(pkg) != null
+    }
+
+    private fun label(pkg: String): String = labelCache.getOrPut(pkg) {
+        try {
+            packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+        } catch (e: Exception) { pkg }
+    }
+
+    private val doRefresh = Runnable { refreshNow() }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        worker.quitSafely()
+    }
+
+    // 通知が続けて来ても、まとめて1回だけ数え直す
     private fun refresh() {
+        bg.removeCallbacks(doRefresh)
+        bg.postDelayed(doRefresh, 120)
+    }
+
+    // 現在出ている通知を数え直して更新（別スレッド）
+    private fun refreshNow() {
         try {
             val list = activeNotifications ?: emptyArray()
-            val pkgs = list.mapNotNull { it.packageName }.toMutableSet()
-            activePackages.clear()
-            activePackages.addAll(pkgs)
+            activePackages = list.mapNotNull { it.packageName }.toSet()
 
             val latest = HashMap<String, Item>()
             for (sbn in list) {
@@ -95,7 +123,7 @@ class NotificationService : NotificationListenerService() {
                 if (sbn.isOngoing) continue
                 if (sbn.packageName in blockedPkgs) continue
                 // ホームに出てこない（起動できない）アプリの通知は流さない
-                if (packageManager.getLaunchIntentForPackage(sbn.packageName) == null) continue
+                if (!launchable(sbn.packageName)) continue
                 val n = sbn.notification ?: continue
                 if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0) continue
                 if (n.flags and Notification.FLAG_FOREGROUND_SERVICE != 0) continue
@@ -111,10 +139,7 @@ class NotificationService : NotificationListenerService() {
                 if (title.isEmpty() && text.isEmpty()) continue
                 val prev = latest[sbn.packageName]
                 if (prev != null && prev.time >= sbn.postTime) continue
-                val app = try {
-                    packageManager.getApplicationLabel(
-                        packageManager.getApplicationInfo(sbn.packageName, 0)).toString()
-                } catch (e: Exception) { sbn.packageName }
+                val app = label(sbn.packageName)
                 latest[sbn.packageName] = Item(sbn.packageName, app, title, text, sbn.postTime, n.contentIntent)
             }
             items = latest.values.sortedByDescending { it.time }

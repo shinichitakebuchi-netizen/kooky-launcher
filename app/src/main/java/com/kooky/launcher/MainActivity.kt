@@ -83,6 +83,9 @@ class MainActivity : Activity() {
     private lateinit var statusArc: StatusArcView
     private lateinit var dataStat: StatItemView
     private lateinit var ticker: TickerView
+    private var lastBadgePkgs: Set<String> = emptySet()
+    // アイコンの絵を覚えておく（毎回描かない）。見た目に関わる設定を全部キーに入れる
+    private val iconCache = HashMap<String, android.graphics.drawable.Drawable>()
     private lateinit var mediaBar: MediaBar
     private lateinit var storageStat: StatItemView
     private lateinit var rootFrame: FrameLayout
@@ -219,7 +222,8 @@ class MainActivity : Activity() {
             val sp = SpannableString(text)
             sp.setSpan(RelativeSizeSpan(0.6f), hm.length + 1, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             clockText.text = sp
-            dateText.text = dateFormat.format(now)
+            val ds = dateFormat.format(now)
+            if (dateText.text.toString() != ds) dateText.text = ds
             // 移ろい：分が変わったときに日の出・日の入りを過ぎたか確かめて、色を切り替える
             if (themeMode == 2 && now.time / 60000 != lastThemeMinute) {
                 lastThemeMinute = now.time / 60000
@@ -271,7 +275,9 @@ class MainActivity : Activity() {
         NotificationService.onArrive = { runOnUiThread { onNotifArrive() } }
         NotificationService.onChange = {
             runOnUiThread {
-                appAdapter.notifyDataSetChanged()
+                // 通知の点が変わったアプリがあるときだけ、アイコンを描き直す
+                val now = NotificationService.activePackages
+                if (now != lastBadgePkgs) { lastBadgePkgs = now; appAdapter.notifyDataSetChanged() }
                 if (::ticker.isInitialized) updateTicker()
             }
         }
@@ -318,6 +324,7 @@ class MainActivity : Activity() {
             setOnClickListener { openClock() }
             setOnLongClickListener { showClockDiagnostics(); true }
         }
+        textOnlyTouch(clockText)
         dateText = TextView(this).apply {
             textSize = 16f
             setTextColor(subText)
@@ -325,6 +332,7 @@ class MainActivity : Activity() {
             setPadding(0, dp(4), 0, 0)
             setOnClickListener { openCalendar() }
         }
+        textOnlyTouch(dateText)
 
         val weatherRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -355,15 +363,12 @@ class MainActivity : Activity() {
                 gravity = Gravity.CENTER_HORIZONTAL
                 bottomMargin = dp(2)
             })
-            // 時計・日付は文字の幅だけ（文字のあるところだけタップに反応）
+            // 時計・日付は横いっぱい（毎秒の書き換えで画面全体の並べ直しが起きないように）
+            // タップは文字のあるところだけ（textOnlyTouch）
             addView(clockText, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-            })
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(dateText, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-            })
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(statsRow, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
@@ -424,6 +429,9 @@ class MainActivity : Activity() {
             visibility = View.GONE
             onItemTap = { openNotification(it) }
             onDoubleTap = { openNotificationPanel() }
+            addOnLayoutChangeListener { _, l, t, r, b, ol, ot, orr, ob ->
+                if (l != ol || t != ot || r != orr || b != ob) widenTickerTouch()
+            }
         }
 
         grid = GridView(this).apply {
@@ -535,6 +543,29 @@ class MainActivity : Activity() {
 
     // 縦向き：上に時計まわり、下にアプリ（3段）
     // 横向き：左右50%ずつ。左に時計まわり、右に掲示板・検索・アプリ（2段）
+    // 文字の左右の外を押したときは反応させない（文字の幅だけが押せる）
+    private fun textOnlyTouch(tv: TextView) {
+        tv.setOnTouchListener { v, e ->
+            val l = (v as TextView).layout ?: return@setOnTouchListener false
+            if (e.actionMasked != MotionEvent.ACTION_DOWN) return@setOnTouchListener false
+            val left = v.totalPaddingLeft + l.getLineLeft(0) - dp(6)
+            val right = v.totalPaddingLeft + l.getLineRight(0) + dp(6)
+            // 外なら、この指の動きは丸ごと受け取って何もしない
+            e.x < left || e.x > right
+        }
+    }
+
+    // 流れる通知は20dpと細いので、押せる範囲を上に12dp・下に4dp広げる
+    private fun widenTickerTouch() {
+        val parent = ticker.parent as? View ?: return
+        ticker.post {
+            val r = android.graphics.Rect()
+            ticker.getHitRect(r)
+            r.top -= dp(12); r.bottom += dp(4)
+            parent.touchDelegate = android.view.TouchDelegate(r, ticker)
+        }
+    }
+
     private fun arrangeLayout() {
         val land = resources.configuration.orientation ==
             android.content.res.Configuration.ORIENTATION_LANDSCAPE
@@ -2531,9 +2562,14 @@ class MainActivity : Activity() {
             }
             val hasNotif = NotificationService.activePackages.contains(app.packageName)
             val fav = favColorOf(app.packageName)
-            val iconDrawable = if (useDesignIcon) designIcon(app, hasNotif)
+            val key = "${app.packageName}|$hasNotif|$fav|$isLight|${Wa.accentIndex}|$patternType|$patternStyle|" +
+                "$fontIndex|$showInitial|$useDesignIcon|${displayName(app)}"
+            if (iconCache.size > 400) iconCache.clear()
+            val iconDrawable = iconCache.getOrPut(key) {
+                if (useDesignIcon) designIcon(app, hasNotif)
                 else if (fav != null) framedIcon(app.icon, fav, hasNotif)
                 else if (hasNotif) withBadge(app.icon) else app.icon
+            }
             val icon = ImageView(this@MainActivity).apply {
                 setImageDrawable(iconDrawable)
                 layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
