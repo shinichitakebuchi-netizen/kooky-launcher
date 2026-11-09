@@ -227,7 +227,11 @@ class MainActivity : Activity() {
             // 移ろい：分が変わったときに日の出・日の入りを過ぎたか確かめて、色を切り替える
             if (themeMode == 2 && now.time / 60000 != lastThemeMinute) {
                 lastThemeMinute = now.time / 60000
-                if (computeLight() != isLight) { applyTheme(); thread { LockWallpaper.update(this@MainActivity) } }
+                if (computeLight() != isLight) {
+                    applyTheme()
+                    if (settingsDialog?.isShowing == true) renderSettings()   // 設定を開いていても切り替える
+                    thread { LockWallpaper.update(this@MainActivity) }
+                }
             }
             timeHandler.postDelayed(this, 1000)
         }
@@ -1435,10 +1439,11 @@ class MainActivity : Activity() {
     }
 
     // ===== 設定（藍・鳥の子・紅緋の全画面。縁アプリと同じ配色・デザイン） =====
-    private val SUMI = Wa.SUMI            // 背景：墨
-    private val KINARI = Wa.TORINOKO      // 文字：鳥の子色
-    private val USUZUMI = Wa.KAMENOZOKI70 // 補足：甕覗 70%
-    private val SUMI_LINE = Wa.RIKYU      // 罫線：利休鼠
+    // ホームと同じ色合い（墨／白練／移ろい）に合わせる
+    private val SUMI get() = Wa.bg(isLight)          // 背景：墨（白練）
+    private val KINARI get() = Wa.ink(isLight)       // 文字：鳥の子色（藍色）
+    private val USUZUMI get() = Wa.sub(isLight)      // 補足：甕覗 70%（利休鼠）
+    private val SUMI_LINE get() = Wa.line(isLight)   // 罫線：利休鼠
     private val SHU get() = Wa.accent     // 見出し：差し色（初期値は紅緋）
     private var settingsDialog: android.app.Dialog? = null
     private var settingsCol: LinearLayout? = null
@@ -1487,9 +1492,29 @@ class MainActivity : Activity() {
         d.show()
     }
 
+    // 設定画面の地とステータスバー・ナビバーを、今の色合いに塗り直す
+    private fun paintSettingsWindow() {
+        val d = settingsDialog ?: return
+        settingsScroll?.setBackgroundColor(SUMI)
+        try {
+            d.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(SUMI))
+            d.window?.statusBarColor = SUMI
+            d.window?.navigationBarColor = SUMI
+            // 白練のときは、バーのアイコンを暗い色に
+            @Suppress("DEPRECATION")
+            d.window?.decorView?.let { v ->
+                var f = v.systemUiVisibility
+                val light = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+                f = if (isLight) f or light else f and light.inv()
+                v.systemUiVisibility = f
+            }
+        } catch (e: Exception) {}
+    }
+
     private fun renderSettings() {
         val col = settingsCol ?: return
         col.removeAllViews()
+        paintSettingsWindow()
         // 見出しも本文も、設定の「文字」で選んだフォント
         val serif = Typeface.create(appTf, Typeface.NORMAL)
         val serifBold = Typeface.create(appTf, Typeface.BOLD)
@@ -1750,7 +1775,7 @@ class MainActivity : Activity() {
                 val ins = dp(2).toFloat()
                 val pen = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = dp(1).toFloat(); color = KINARI }
                 if (i > 0) Pattern.drawInIcon(cv, i, patternStyle, sz.toFloat(), ins, dp(2).toFloat(),
-                    when (patternStyle) { 1 -> Wa.KAMENOZOKI; 2 -> KINARI; else -> Wa.RIKYU },
+                    when (patternStyle) { 1 -> if (isLight) Wa.RIKYU else Wa.KAMENOZOKI; 2 -> KINARI; else -> Wa.RIKYU },
                     SUMI, (if (patternStyle == 2) 0.7f else 0.6f) * resources.displayMetrics.density)
                 if (i == 0 || patternStyle != 2) cv.drawRoundRect(ins, ins, sz - ins, sz - ins, dp(2).toFloat(), dp(2).toFloat(), pen)
                 cell.addView(ImageView(this).apply {
