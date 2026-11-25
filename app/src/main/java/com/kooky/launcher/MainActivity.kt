@@ -28,6 +28,7 @@ import android.net.NetworkRequest
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Bundle
+import android.graphics.RectF
 import android.os.Handler
 import android.os.Looper
 import android.provider.AlarmClock
@@ -204,6 +205,73 @@ class MainActivity : Activity() {
 
     // ===== 四季のカラクリ（天気の長押し・新しい通知のとき） =====
     private lateinit var seasonView: SeasonView
+
+    // ===== 開く・戻るの演出（TransitionFx） =====
+    private lateinit var fx: TransitionFx
+    private var openStyle = 1          // 0=なし 1=襖 2=墨 3=波紋 4=落款
+    private var backStyle = 1          // 0=なし 1=余白 2=線 3=静か 4=跡
+    private var backPending = false    // ホームから開いたアプリから戻ってくるところ
+    private var lastLaunched = ""
+
+    private fun rectInRoot(v: View): RectF {
+        val a = IntArray(2); v.getLocationInWindow(a)
+        val b = IntArray(2); rootFrame.getLocationInWindow(b)
+        val x = (a[0] - b[0]).toFloat(); val y = (a[1] - b[1]).toFloat()
+        return RectF(x, y, x + v.width, y + v.height)
+    }
+
+    // 開いたアプリから戻ってきたときの演出
+    private fun playBack() {
+        if (!::fx.isInitialized) return
+        when (backStyle) {
+            1 -> { // 余白から現れる：上から順に少しずつ浮かぶ
+                val parts = ArrayList<View>()
+                for (i in 0 until topArea.childCount) parts.add(topArea.getChildAt(i))
+                if (ticker.visibility == View.VISIBLE) parts.add(ticker)
+                parts.add(searchBarRow)
+                for (i in 0 until grid.childCount) parts.add(grid.getChildAt(i))
+                val off = dp(8).toFloat()
+                parts.forEachIndexed { i, v ->
+                    v.animate().cancel()
+                    v.alpha = 0f; v.translationY = off
+                    v.animate().alpha(1f).translationY(0f).setStartDelay(i * 40L).setDuration(360)
+                        .setInterpolator(android.view.animation.DecelerateInterpolator(1.6f)).start()
+                }
+            }
+            2 -> { // 線が引かれる：検索の線と、アイコンの枠を描く
+                val bar = rectInRoot(searchBarRow)
+                val icons = ArrayList<RectF>()
+                val iconViews = ArrayList<View>()
+                for (i in 0 until grid.childCount) {
+                    val icon = (grid.getChildAt(i) as? ViewGroup)?.getChildAt(0) ?: continue
+                    val r = rectInRoot(icon); val ins = dp(2).toFloat()
+                    icons.add(RectF(r.left + ins, r.top + ins, r.right - ins, r.bottom - ins))
+                    iconViews.add(icon)
+                }
+                val bgd = searchBarRow.background
+                bgd?.alpha = 0
+                iconViews.forEach { v -> v.animate().cancel(); v.alpha = 0f
+                    v.animate().alpha(1f).setStartDelay(420).setDuration(320).start() }
+                fx.playLines(bar.bottom - dp(1) / 2f, bar.left, bar.right, icons)
+                timeHandler.postDelayed({ bgd?.alpha = 255; searchBarRow.invalidate() }, 760)
+            }
+            3 -> { // 静かに戻る
+                contentLayout.animate().cancel()
+                contentLayout.alpha = 0f
+                contentLayout.animate().alpha(1f).setDuration(420).start()
+            }
+            4 -> { // 戻った跡：開いていたアプリの四角に輪
+                for (i in 0 until grid.childCount) {
+                    val cell = grid.getChildAt(i) as? ViewGroup ?: continue
+                    if (cell.tag == lastLaunched) {
+                        val icon = cell.getChildAt(0)
+                        timeHandler.postDelayed({ fx.playTrace(rectInRoot(icon)) }, 120)
+                        break
+                    }
+                }
+            }
+        }
+    }
     private var seasonOnNotif = true   // 新しい通知が届いたら舞わせる
     private var homeShown = false      // ホームが前に出ているか
     private var seasonPending = false  // ホームを見ていない間に通知が届いた
@@ -464,11 +532,16 @@ class MainActivity : Activity() {
 
         seasonOnNotif = prefs.getBoolean("season_notif", true)
         seasonView = SeasonView(this)
+        fx = TransitionFx(this)
+        openStyle = prefs.getInt("open_fx", 1).coerceIn(0, 4)
+        backStyle = prefs.getInt("back_fx", 1).coerceIn(0, 4)
         rootFrame = FrameLayout(this).apply {
             addView(contentLayout, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             // いちばん上に重ねる（触っても下のホームに届く）
             addView(seasonView, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(fx, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
 
@@ -672,6 +745,7 @@ class MainActivity : Activity() {
         mediaBar.lightMode = isLight
         storageStat.lightMode = isLight
         if (::seasonView.isInitialized) seasonView.lightMode = isLight
+        if (::fx.isInitialized) { fx.lightMode = isLight; fx.accent = Wa.accent; fx.font = appTf }
         applyFont(window.decorView)
         appAdapter.notifyDataSetChanged()
         thread { LockWallpaper.update(this) }
@@ -1014,6 +1088,9 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         homeShown = true
+        // 開く演出の止め絵を消して、戻ってきた演出
+        if (::fx.isInitialized) fx.clear()
+        if (backPending) { backPending = false; rootFrame.post { playBack() } }
         if (seasonPending && seasonOnNotif && ::seasonView.isInitialized) {
             seasonPending = false
             timeHandler.postDelayed({ if (homeShown) seasonView.play() }, 500)
@@ -1450,7 +1527,7 @@ class MainActivity : Activity() {
     private var settingsScroll: ScrollView? = null
     // 設定の階層：-1=一覧 / 0〜7=各ページ
     private var settingsPage = -1
-    private val SETTING_PAGES = listOf("表示", "色合い", "文様", "文字", "四季", "通信量", "ロック画面", "控え")
+    private val SETTING_PAGES = listOf("表示", "色合い", "文様", "文字", "四季", "通信量", "ロック画面", "控え", "動き")
 
     private fun openSettingsPage(p: Int) {
         settingsPage = p
@@ -1641,6 +1718,7 @@ class MainActivity : Activity() {
             menuRow(4, if (seasonOnNotif) "通知で舞う" else "長押しのときだけ")
             menuRow(5, "締め日 ${closeDayLabel()}・上限 ${dataLimitGb()}GB")
             menuRow(6, if (LockWallpaper.isOn(this)) "1年の○を壁紙に" else "使わない")
+            menuRow(8, "開く " + TransitionFx.OPEN_NAMES[openStyle] + "・戻る " + TransitionFx.BACK_NAMES[backStyle])
             menuRow(7, "書き出す・読み込む")
 
             // ── 更新 ──
@@ -1883,6 +1961,40 @@ class MainActivity : Activity() {
             if (it == 0) startExport() else startImport()
         }
 
+        }
+        if (settingsPage == 8) {
+        // ── 動き ──
+        // 縦に並べた選択肢：選択中は鳥の子色（白練では藍色）の細い枠、ほかは利休鼠
+        fun optionRows(names: List<String>, desc: List<String>, sel: Int, pick: (Int) -> Unit) {
+            names.forEachIndexed { i, n ->
+                val on = i == sel
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(16), dp(10), dp(16), dp(10))
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(2).toFloat(); setColor(Color.TRANSPARENT)
+                        setStroke(dp(1), if (on) KINARI else SUMI_LINE)
+                    }
+                    isClickable = true
+                    setOnClickListener { if (!on) pick(i) }
+                }
+                row.addView(TextView(this).apply { text = n; setTextColor(if (on) KINARI else USUZUMI); textSize = 15f })
+                row.addView(TextView(this).apply { text = desc[i]; setTextColor(USUZUMI); textSize = 12f; setPadding(0, dp(3), 0, 0) })
+                col.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = dp(if (i == 0) 14 else 8)
+                })
+            }
+        }
+        section("開くとき")
+        optionRows(TransitionFx.OPEN_NAMES, TransitionFx.OPEN_DESC, openStyle) {
+            openStyle = it; prefs.edit().putInt("open_fx", it).apply(); renderSettings()
+        }
+        section("戻ってきたとき")
+        optionRows(TransitionFx.BACK_NAMES, TransitionFx.BACK_DESC, backStyle) {
+            backStyle = it; prefs.edit().putInt("back_fx", it).apply(); renderSettings()
+        }
+        col.addView(View(this), LinearLayout.LayoutParams(1, dp(14)))
+        note("ホームのアイコンから開いたときに動きます。アプリが縮んでホームに戻る動きはAndroidの決まりで変えられないので、戻ったあとのホームの現れ方で演出します。")
         }
         applyFont(col)
     }
@@ -2405,13 +2517,13 @@ class MainActivity : Activity() {
         } catch (e: Exception) {}
     }
 
-    private fun startShortcutKey(key: String): Boolean {
+    private fun startShortcutKey(key: String, opts: Bundle? = null): Boolean {
         return try {
             val body = key.removePrefix(SC)
             val pkg = body.substringBefore("/")
             val id = body.substringAfter("/")
             val la = getSystemService(Context.LAUNCHER_APPS_SERVICE) as android.content.pm.LauncherApps
-            la.startShortcut(pkg, id, null, null, android.os.Process.myUserHandle())
+            la.startShortcut(pkg, id, null, opts, android.os.Process.myUserHandle())
             true
         } catch (e: Exception) {
             Toast.makeText(this, "ショートカットを開けませんでした", Toast.LENGTH_SHORT).show()
@@ -2469,12 +2581,37 @@ class MainActivity : Activity() {
         appAdapter.notifyDataSetChanged()
     }
 
-    private fun launchApp(pkg: String) {
+    private fun launchApp(pkg: String, from: View? = null) {
         val count = prefs.getInt(pkg, 0) + 1
         prefs.edit().putInt(pkg, count).apply()
         resetSearch()
-        if (isShortcut(pkg)) { startShortcutKey(pkg); return }
-        packageManager.getLaunchIntentForPackage(pkg)?.let { startActivity(it) }
+        // アイコンから開いたときだけ演出（検索の候補などからはすぐ開く）
+        if (from != null && openStyle > 0 && ::fx.isInitialized && !fx.isBusy()) {
+            fx.font = appTf; fx.accent = Wa.accent; fx.lightMode = isLight
+            fx.playOpen(openStyle, rectInRoot(from)) { startLaunch(pkg, from) }
+        } else startLaunch(pkg, null)
+    }
+
+    // アプリの出方（ActivityOptions）：襖は真ん中の縦線から左右へ、波紋・落款はアイコンから広がる、墨はふわっと
+    private fun startLaunch(pkg: String, from: View?) {
+        val opts: Bundle? = try {
+            when {
+                from == null -> null
+                openStyle == 1 -> android.app.ActivityOptions.makeClipRevealAnimation(
+                    rootFrame, rootFrame.width / 2 - dp(1), 0, dp(2), rootFrame.height).toBundle()
+                openStyle == 2 -> android.app.ActivityOptions.makeCustomAnimation(
+                    this, R.anim.iori_fade_in, R.anim.iori_hold).toBundle()
+                else -> android.app.ActivityOptions.makeClipRevealAnimation(
+                    from, 0, 0, from.width, from.height).toBundle()
+            }
+        } catch (e: Exception) { null }
+        var ok = false
+        if (isShortcut(pkg)) ok = startShortcutKey(pkg, opts)
+        else packageManager.getLaunchIntentForPackage(pkg)?.let {
+            try { startActivity(it, opts); ok = true } catch (e: Exception) {}
+        }
+        if (ok) { lastLaunched = pkg; backPending = from != null && backStyle > 0 }
+        else if (::fx.isInitialized) fx.clear()
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
@@ -2584,6 +2721,7 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 setPadding(dp(cellPadDp), dp(8), dp(cellPadDp), dp(8))
+                tag = app.packageName   // 戻った跡で、開いていたアプリを探すため
             }
             val hasNotif = NotificationService.activePackages.contains(app.packageName)
             val fav = favColorOf(app.packageName)
@@ -2600,7 +2738,7 @@ class MainActivity : Activity() {
                 layoutParams = LinearLayout.LayoutParams(dp(56), dp(56))
                 contentDescription = displayName(app)
                 // 四角の中だけが押せる場所
-                setOnClickListener { launchApp(app.packageName) }
+                setOnClickListener { launchApp(app.packageName, it) }
                 setOnLongClickListener { showAppMenu(app); true }
                 // 押している間だけ少し薄くする
                 setOnTouchListener { v, e ->
