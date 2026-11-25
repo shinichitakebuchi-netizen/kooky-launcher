@@ -2592,6 +2592,27 @@ class MainActivity : Activity() {
         } else startLaunch(pkg, null)
     }
 
+    // 別のアプリを開くときの動きは、ふつうの指定（makeCustomAnimation）だと Galaxy が横スライドに置き換える。
+    // Android の中には「アプリをまたぐ開き方も上書きする」指定（makeCustomTaskAnimation）があるので、試しに使う。
+    // 公開されていない仕組みなので、使えない端末ではふつうの指定に戻る
+    private fun customTaskOptions(enter: Int): Bundle? = try {
+        val m = android.app.ActivityOptions::class.java.methods.firstOrNull { it.name == "makeCustomTaskAnimation" }
+        if (m == null) null else {
+            val args = arrayOfNulls<Any>(m.parameterTypes.size)
+            m.parameterTypes.forEachIndexed { i, t ->
+                args[i] = when {
+                    t == Context::class.java -> this
+                    t == Int::class.javaPrimitiveType && i == 1 -> enter
+                    t == Int::class.javaPrimitiveType && i == 2 -> R.anim.iori_hold
+                    t == Int::class.javaPrimitiveType -> 0
+                    t == Boolean::class.javaPrimitiveType -> false
+                    else -> null
+                }
+            }
+            (m.invoke(null, *args) as? android.app.ActivityOptions)?.toBundle()
+        }
+    } catch (e: Throwable) { null }
+
     // アプリの出方（ActivityOptions）：襖は真ん中の縦線から左右へ、波紋・落款はアイコンから広がる、墨はふわっと
     private fun startLaunch(pkg: String, from: View?) {
         // Galaxy では位置を指定する出方（クリップ表示）が使われず、横からのスライドになることがあるので、
@@ -2602,7 +2623,7 @@ class MainActivity : Activity() {
             openStyle == 2 -> R.anim.iori_fade_in
             else -> R.anim.iori_open_rise
         }
-        val opts: Bundle? = try {
+        val opts: Bundle? = customTaskOptions(enter) ?: try {
             android.app.ActivityOptions.makeCustomAnimation(this, enter, R.anim.iori_hold).toBundle()
         } catch (e: Exception) { null }
         var ok = false
