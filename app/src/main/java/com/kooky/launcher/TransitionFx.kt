@@ -69,7 +69,7 @@ class TransitionFx(context: Context) : View(context) {
         when (style) {
             1 -> begin("fusuma", 0.30f, then)
             2 -> begin("sumi", 0.34f, then)
-            3 -> begin("hamon", 0.34f, then)
+            3 -> begin("hamon", 0.52f, then)
             4 -> begin("rakkan", 0.34f, then)
             else -> then()
         }
@@ -133,14 +133,23 @@ class TransitionFx(context: Context) : View(context) {
                 c.drawPath(path, fill)
             }
             "hamon" -> {
-                // 3本の輪が少しずつ遅れて広がる
-                line.strokeWidth = 1f * d
+                // 波紋が画面いっぱいまで広がる。先頭の輪の内側は水面のように地の色で静まり、
+                // ホームが波にのまれて消えたところでアプリが出る
+                val far = hypot(max(src.centerX(), w - src.centerX()), max(src.centerY(), h - src.centerY()))
+                val r0 = src.width() / 2f
+                // 内側の静まり（いちばん後ろの輪を追いかける）
+                val calm = ease(((k - 0.25f) / 0.75f).coerceIn(0f, 1f))
+                if (calm > 0f) { fill.color = bg; c.drawCircle(src.centerX(), src.centerY(), r0 + (far + 20f * d) * calm, fill) }
+                // 3本の輪（先に出た輪ほど遠くへ、うすく）
                 for (j in 0 until 3) {
-                    val kk = ((k * 1.4f) - j * 0.2f).coerceIn(0f, 1f)
-                    line.color = ink; line.alpha = ((1f - kk) * 255).toInt()
-                    c.drawCircle(src.centerX(), src.centerY(), src.width() / 2f + kk * 90f * d, line)
+                    val kk = ease(((k * 1.25f) - j * 0.12f).coerceIn(0f, 1f))
+                    if (kk <= 0f) continue
+                    line.color = ink
+                    line.strokeWidth = (1.4f - j * 0.3f) * d
+                    line.alpha = ((1f - kk * 0.7f) * (if (k > 0.85f) (1f - k) / 0.15f else 1f) * 255).toInt().coerceIn(0, 255)
+                    c.drawCircle(src.centerX(), src.centerY(), r0 + (far + 40f * d) * kk, line)
                 }
-                line.alpha = 255
+                line.alpha = 255; line.strokeWidth = 1f * d
             }
             "rakkan" -> {
                 // 差し色の四角い印に「庵」。大きめから押しつけるように縮む
