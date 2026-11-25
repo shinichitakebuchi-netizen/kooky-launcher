@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 襖がひらく：真ん中の縦の線から、左右に開くように広がる -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:interpolator="@android:interpolator/decelerate_cubic"
+    android:shareInterpolator="true">
+    <scale android:fromXScale="0.02" android:toXScale="1"
+        android:fromYScale="1" android:toYScale="1"
+        android:pivotX="50%" android:pivotY="50%" android:duration="320" />
+    <alpha android:fromAlpha="0.6" android:toAlpha="1" android:duration="200" />
+</set>

@@ -2594,16 +2594,16 @@ class MainActivity : Activity() {
 
     // アプリの出方（ActivityOptions）：襖は真ん中の縦線から左右へ、波紋・落款はアイコンから広がる、墨はふわっと
     private fun startLaunch(pkg: String, from: View?) {
+        // Galaxy では位置を指定する出方（クリップ表示）が使われず、横からのスライドになることがあるので、
+        // どれも自前のアニメーション（res/anim）で指定する。横スライドは使わない
+        val enter = when {
+            from == null || openStyle == 0 -> R.anim.iori_open_quick
+            openStyle == 1 -> R.anim.iori_open_fusuma
+            openStyle == 2 -> R.anim.iori_fade_in
+            else -> R.anim.iori_open_rise
+        }
         val opts: Bundle? = try {
-            when {
-                from == null -> null
-                openStyle == 1 -> android.app.ActivityOptions.makeClipRevealAnimation(
-                    rootFrame, rootFrame.width / 2 - dp(1), 0, dp(2), rootFrame.height).toBundle()
-                openStyle == 2 -> android.app.ActivityOptions.makeCustomAnimation(
-                    this, R.anim.iori_fade_in, R.anim.iori_hold).toBundle()
-                else -> android.app.ActivityOptions.makeClipRevealAnimation(
-                    from, 0, 0, from.width, from.height).toBundle()
-            }
+            android.app.ActivityOptions.makeCustomAnimation(this, enter, R.anim.iori_hold).toBundle()
         } catch (e: Exception) { null }
         var ok = false
         if (isShortcut(pkg)) ok = startShortcutKey(pkg, opts)
