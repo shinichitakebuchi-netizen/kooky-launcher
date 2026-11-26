@@ -71,20 +71,20 @@ class SeasonView(context: Context) : View(context) {
         if (s == 1 && summerDay) {
             // 水面の波紋：アプリのあたりに、輪が静かに広がる（0.9秒ずつずらして6か所）
             dur = 9f
-            parts = List(6) { P(rf(40f * d, w - 40f * d), rf(h * 0.35f, h * 0.95f), 0f, 0f, 0f,
-                0f, 0f, 1f, it * 0.9f, false) }
+            parts = List(12) { P(rf(40f * d, w - 40f * d), rf(h * 0.35f, h * 0.95f), 0f, 0f, 0f,
+                0f, 0f, 1f, it * 0.55f, false) }
         } else if (s == 1) {
             // 蛍：画面の下半分あたりで、ふわっと灯っては消える
             dur = 9f
-            parts = List(9) { P(rf(20f * d, w - 20f * d), rf(h * 0.40f, h * 0.92f), 0f, 0f, rf(0f, 6.3f),
+            parts = List(18) { P(rf(20f * d, w - 20f * d), rf(h * 0.40f, h * 0.92f), 0f, 0f, rf(0f, 6.3f),
                 0f, 0f, rf(0.8f, 1.2f), 0f, false) }
         } else {
             dur = if (s == 3) 11f else 9f
-            val n = if (s == 3) 16 else 14
+            val n = if (s == 3) 32 else 28   // 前の約2倍
             parts = List(n) {
                 P(rf(0f, w), rf(-h * 0.5f, -10f * d), rf(46f, 82f) * d * (if (s == 3) 0.55f else 1f),
                     rf(0.6f, 1.4f), rf(0f, 6.3f), rf(0f, 6.3f), rf(-1.5f, 1.5f), rf(0.8f, 1.3f),
-                    rf(0f, 2.5f), it % 3 == 0)
+                    rf(0f, 4f), it % 3 == 0)
             }
         }
         start = SystemClock.uptimeMillis()
